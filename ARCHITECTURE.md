@@ -2,7 +2,7 @@
 
 ## High-Level Summary
 
-AgentForge Clinical Co-Pilot is a read-only, nurse-focused assistant embedded in OpenEMR as a sidebar. The architecture is intentionally narrow: in v1 it supports a single-turn interaction that helps nurses quickly read and interpret patient information without leaving the chart. The system is designed around a strong trust boundary because the domain is clinical and because the brief explicitly requires that every patient-specific or clinical claim be traceable to the patient record.
+AgentForge Clinical Co-Pilot is a read-only, nurse-focused assistant embedded in OpenEMR as a sidebar. The architecture is intentionally narrow: in v1 it supports a multi-turn conversation, scoped to a single patient chart session, that helps nurses quickly read and interpret patient information without leaving the chart. The system is designed around a strong trust boundary because the domain is clinical and because the brief explicitly requires that every patient-specific or clinical claim be traceable to the patient record.
 
 The product is split into four major layers. First is the OpenEMR presentation layer, where the sidebar lives and where the current patient context is available from the existing session. Second is an agent orchestration layer that receives the nurse's question, builds a prompt with the active patient context, and routes any needed retrieval requests. Third is a verification layer that checks whether each factual claim is supported by specific source records before the response is shown. Fourth is an observability and evaluation layer that records correlation IDs, tool calls, latency, verification outcomes, and fallback behavior so the system can be audited and improved.
 
@@ -95,7 +95,7 @@ Responsibilities:
 
 ### 3. Agent Orchestrator
 
-The orchestrator handles a single request at a time. It does not maintain multi-turn memory in v1. Its job is to translate the nurse's question into a bounded workflow: build a prompt, decide whether retrieval is needed, call tools, and hand the resulting content to verification.
+The orchestrator handles a multi-turn conversation scoped to one patient chart session, maintaining context across the nurse's follow-up questions. It does not carry memory across different patients or shifts. Its job is to translate each nurse question — with its prior conversational context — into a bounded workflow: build a prompt, decide whether retrieval is needed, call tools, and hand the resulting content to verification.
 
 Responsibilities:
 
@@ -171,8 +171,8 @@ Responsibilities:
 
 1. The nurse opens a patient chart in OpenEMR.
 2. The sidebar receives the active patient context.
-3. The nurse submits a single question.
-4. The orchestrator builds a bounded prompt using the patient context.
+3. The nurse submits a question (an opening question or a follow-up in the ongoing chart-session conversation).
+4. The orchestrator builds a bounded prompt using the patient context and the prior turns of the current session.
 5. The tool router fetches the relevant record data.
 6. Claude synthesizes a draft answer from the retrieved data.
 7. The verifier checks every claim against source records.
@@ -214,7 +214,7 @@ This is important because the project is judged on trustworthiness and defensibi
 
 ## Tradeoffs
 
-- Single-turn over multi-turn: simpler, safer, and easier to verify in v1.
+- Session-scoped multi-turn over cross-session memory: supports the nurse's natural follow-up questions while keeping every conversation bounded to one patient and independently verifiable.
 - Sidebar over dashboard: better workflow fit for chart review.
 - Read-only over write access: lower risk and easier to defend.
 - Claude over model experimentation: a defensible, production-oriented starting point.
