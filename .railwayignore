@@ -1,0 +1,25 @@
+# The Railway image (docker/railway/Dockerfile) wraps the prebuilt
+# openemr/openemr release image and COPYs nothing from this repo, so the build
+# context does not need the application source. Exclude the heavy directories to
+# keep `railway up` uploads fast. Remove/adjust if you switch to a from-source
+# build.
+.git
+node_modules
+vendor
+Documentation
+docs
+tests
+ci
+sql
+contrib
+gacl
+interface
+library
+src
+templates
+portal
+public
+swagger
+outputs
+*.lock
+.DS_Store

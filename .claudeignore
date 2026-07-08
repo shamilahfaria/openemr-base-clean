@@ -1,0 +1,16 @@
+# Ignore IDE and CI/CD folders
+.vscode/
+.github/
+.idea/
+
+# Ignore heavy dependencies and assets
+node_modules/
+.git/
+dist/
+build/
+*.mp4
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.mp3
