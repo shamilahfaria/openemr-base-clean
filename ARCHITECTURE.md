@@ -1,232 +1,315 @@
-# AgentForge Clinical Co-Pilot Architecture
+# AgentForge Clinical Co-Pilot — Architecture
 
 ## High-Level Summary
 
-AgentForge Clinical Co-Pilot is a read-only, nurse-focused assistant embedded in OpenEMR as a sidebar. The architecture is intentionally narrow: in v1 it supports a multi-turn conversation, scoped to a single patient chart session, that helps nurses quickly read and interpret patient information without leaving the chart. The system is designed around a strong trust boundary because the domain is clinical and because the brief explicitly requires that every patient-specific or clinical claim be traceable to the patient record.
+The Clinical Co-Pilot is a **read-only, multi-turn AI assistant** embedded in
+OpenEMR as a chart sidebar, serving one narrow user: an inpatient hospice nurse
+(see [`USER.md`](USER.md)). It exists to give her a fast, **source-cited**
+answer to "what changed, what's the current comfort status, what am I about to
+give, and what are this patient's wishes" without scanning tabs — and to behave
+predictably when data or tools are incomplete.
 
-The product is split into four major layers. First is the OpenEMR presentation layer, where the sidebar lives and where the current patient context is available from the existing session. Second is an agent orchestration layer that receives the nurse's question, builds a prompt with the active patient context, and routes any needed retrieval requests. Third is a verification layer that checks whether each factual claim is supported by specific source records before the response is shown. Fourth is an observability and evaluation layer that records correlation IDs, tool calls, latency, verification outcomes, and fallback behavior so the system can be audited and improved.
+The system is a **separate Python / FastAPI sidecar** that runs alongside
+OpenEMR, not inside the PHP monolith. This keeps AI, observability, and
+evaluation tooling in a stack built for it (Pydantic, Langfuse, load tests) and
+gives a clean deployment and scaling boundary. The OpenEMR sidebar is a thin
+client: it holds the active patient context and the signed-in user's OAuth2
+token, and calls the sidecar's `/chat` endpoint.
 
-The most important design choice is that the model never gets to speak directly to the user. The LLM is treated as a reasoning component that proposes an answer, but the final output must be validated against source data. If the model generates an unsupported claim, the verifier blocks or rewrites it. If verification cannot be completed, or if a tool fails, the system degrades to a safe fallback: the most recent visit history for the patient, clearly labeled as fallback output rather than a complete answer. This preserves usefulness without pretending certainty.
+Five design decisions define the architecture. **First, the LLM never speaks
+directly to the nurse.** Claude (via the Anthropic SDK) proposes an answer, but a
+deterministic verification layer decides what is displayed. **Second,
+authorization is inherited, not reinvented** — the sidecar calls OpenEMR's
+REST/FHIR API with the user's bearer token, so OpenEMR remains the source of
+truth for identity and patient access, and every request is scoped to the active
+patient. **Third, verification is deterministic and two-sided**: every clinical
+claim must map to a retrieved source record (source attribution), and every
+answer is checked against a curated clinical rule set — allergy conflicts,
+interactions, dosage thresholds (domain-constraint enforcement). **Fourth,
+failure shrinks scope rather than inventing** — on any verification or tool
+failure the agent returns a clearly-labeled fallback to the most recent verified
+visit history. **Fifth, every tool has a strict Pydantic contract**, treated as
+the source of truth over the implementation, so retrieval, verification, and
+fallback stay predictable and testable.
 
-In v1, the assistant is read-only and uses only the sample OpenEMR data that ships with the environment. That decision keeps the threat surface small while still exercising the real integration points: authenticated OpenEMR session access, patient-scoped retrieval, data-source traceability, and clinical-summary generation. The assistant's scope is limited to the data nurses actually need for chart review and information entry: demographics, encounters, notes, medications, allergies, labs, vitals, and problems. Because the user is a nurse, the assistant is optimized for reading and context-gathering rather than diagnosis, prescribing, or chart editing.
+The agent surface is deliberately minimal and traces to the use cases in
+`USER.md`: multi-turn exists because the nurse's real questions arrive as chains
+of dependent follow-ups; tool chaining exists because a safety check is itself a
+chain (allergy → last dose → vital). Conversation state is scoped to a single
+chart session and never persists across patients or shifts.
 
-Claude is the preferred model choice for v1 because the assignment values a defensible architecture over model experimentation, and Claude is a strong fit for structured summarization and controlled tool use. The system should use strict input and output schemas for all agent tools so that retrieval, verification, and fallback logic remain deterministic and testable. Correlation IDs must travel through every request, tool call, and log event so that a single nurse interaction can be reconstructed end to end.
+The primary tradeoff is **breadth for trust.** v1 does not write to the chart,
+does not answer general medical questions, and does not carry cross-session
+memory — those are safety decisions, not missing features. The second tradeoff
+is **speed vs. completeness**, managed explicitly: the agent answers from a cheap
+patient-summary tool first and streams output within 1–2s, chaining deeper
+retrieval only when the question requires it, targeting a p95 end-to-end under
+~8–10s at the workstation.
 
-The overall architectural goal is simple: give a nurse a fast, traceable, clinically safe summary of a patient chart, and do it in a way that is easy to explain, easy to audit, and hard to misuse.
+Observability is wired from the first request: a **correlation ID** flows through
+the sidebar, agent, every tool call, and every LLM interaction into **Langfuse**,
+which backs the dashboards (latency, errors, tool failures, retries, verification
+pass/fail, token cost) and three alerts. Separate `/health` and `/ready`
+endpoints expose liveness and real dependency checks (OpenEMR, Anthropic,
+Langfuse). The goal is an agent a hospital CTO could reason about: narrow,
+read-only, inherited-authz, deterministically verified, and fully traceable.
 
 ## System Diagram
 
 ```mermaid
 flowchart LR
-  Nurse[Nurse] -->|opens chart / asks question| OpenEMR[OpenEMR UI]
+  Nurse["Hospice Nurse"] -->|question / follow-up| Sidebar
 
-  subgraph OpenEMR["OpenEMR"]
-    Sidebar["Clinical Co-Pilot Sidebar"]
-    Session["Authenticated Session + Role Context"]
-    PatientCtx["Active Patient Context"]
+  subgraph OpenEMR["OpenEMR (PHP)"]
+    Sidebar["Chart Sidebar (JS widget)<br/>active patient + OAuth2 token"]
+    OAuth["OAuth2 / FHIR + REST API<br/>identity + patient authz"]
+    DB[("Patient Record Data")]
+    OAuth --> DB
   end
 
-  OpenEMR --> Sidebar
-  OpenEMR --> Session
-  OpenEMR --> PatientCtx
+  Sidebar -->|POST /chat<br/>{patient_id, message, session_id, bearer}| API
 
-  Sidebar --> Agent["Agent Orchestrator"]
-
-  subgraph Backend["Clinical Co-Pilot Backend"]
-    Prompt["Prompt Builder"]
-    Router["Tool Router"]
-    Verifier["Verification Layer"]
-    Fallback["Fallback Logic"]
-    Telemetry["Observability + Audit Logs"]
+  subgraph Sidecar["Clinical Co-Pilot Sidecar (Python / FastAPI)"]
+    API["/chat  /health  /ready"]
+    Session["Session Store<br/>(in-memory, chart-scoped history)"]
+    Orch["Agent Orchestrator<br/>Anthropic SDK tool-use loop"]
+    Tools["Tool Layer<br/>Pydantic-contracted, read-only"]
+    Verify["Verification Layer (deterministic)<br/>1. source attribution<br/>2. clinical rule checks"]
+    Rules["Clinical Rule Set<br/>(versioned JSON)"]
+    Fallback["Fallback Logic<br/>recent visit history"]
   end
 
-  Agent --> Prompt --> Router
-  Router --> Data["OpenEMR Read-Only Data Access"]
-  Data --> Encounters["Encounters"]
-  Data --> Notes["Notes"]
-  Data --> Meds["Medications"]
-  Data --> Allergies["Allergies"]
-  Data --> Labs["Labs"]
-  Data --> Vitals["Vitals"]
-  Data --> Problems["Problems"]
-  Data --> Demographics["Demographics"]
+  API --> Session --> Orch
+  Orch <-->|tool calls| Tools
+  Tools -->|FHIR/REST + bearer| OAuth
+  Orch -->|draft + citations| Verify
+  Tools -->|source records| Verify
+  Rules --> Verify
+  Verify -->|verified answer| API
+  Verify -->|unverifiable / violation / tool failure| Fallback --> API
+  Orch -->|reasoning| Claude["Claude (Anthropic API)<br/>assumed BAA"]
 
-  Router --> Claude["Claude"]
-  Claude --> Verifier
-  Data --> Verifier
-  Verifier -->|verified answer| Response["Final Response"]
-  Verifier -->|unverified or failed| Fallback
-  Fallback -->|most recent visit history| VisitHist["Most Recent Visit History"]
-  VisitHist --> Response
-
-  Response --> Sidebar --> Nurse
-
-  Session --> Data
-  Session --> Agent
-
-  Agent --> Telemetry
-  Router --> Telemetry
-  Verifier --> Telemetry
-  Fallback --> Telemetry
-  Response --> Telemetry
+  API -.correlation ID.-> LF["Langfuse<br/>traces • metrics • cost • alerts"]
+  Orch -.-> LF
+  Tools -.-> LF
+  Verify -.-> LF
+  Fallback -.-> LF
 ```
 
-## Core Components
+## Components
 
-### 1. OpenEMR Sidebar
+### 1. OpenEMR Chart Sidebar (thin client)
+A JS widget injected into the patient chart page. Responsibilities: capture the
+active `patient_id` and the signed-in user's OAuth2 access token, POST turns to
+the sidecar's `/chat`, and render streamed answers, citations, constraint
+warnings, and the fallback label. It contains **no** agent logic.
 
-The sidebar is the only user-facing entry point in v1. It keeps the nurse inside the patient chart while asking a single question and reading the answer. This avoids forcing a context switch to a separate app or dashboard.
+### 2. FastAPI Sidecar (the agent service)
+Owns three endpoints:
+- `POST /chat` — one conversation turn (streaming response).
+- `GET /health` — process liveness only.
+- `GET /ready` — validates real dependencies: OpenEMR API reachable, Anthropic
+  reachable, Langfuse reachable. Returns 503 if any is down.
 
-Responsibilities:
+### 3. Auth & Patient Scoping
+The sidecar never mints its own identity. It forwards the user's bearer token to
+OpenEMR's FHIR/REST API, so OpenEMR enforces identity and access. The sidecar
+additionally hard-scopes every tool call to the `patient_id` from the request and
+rejects any tool argument that names a different patient (defense in depth).
+**Fail closed** if the token is missing/expired or scope can't be confirmed.
 
-- Display the assistant UI.
-- Pass the active patient context to the backend.
-- Render verified responses and fallback messages.
+### 4. Session Store (multi-turn state)
+Conversation history keyed by `session_id` (one open chart = one session), held
+**in-memory** and ephemeral for v1. No PHI is persisted beyond process lifetime;
+history is dropped when the chart session ends. (Redis is the scale-out swap, not
+needed for MVP.)
 
-### 2. Session and Authorization Layer
+### 5. Agent Orchestrator
+A thin Anthropic SDK tool-use loop. Per turn it: loads session history, builds a
+bounded prompt with the active patient context, lets Claude call read-only tools,
+and hands the draft answer + cited source IDs to the verifier. It does not let
+Claude free-roam the chart; tools are the only data path. Model: Claude
+Sonnet-class (latency/cost fit for structured summarization); the verifier is
+**not** an LLM.
 
-OpenEMR remains the source of truth for authenticated user identity and patient access. The co-pilot must not invent its own authorization model. It should receive the signed-in user context and the active patient context from OpenEMR, then enforce read-only access before any retrieval step.
+### 6. Tool Layer (read-only, Pydantic-contracted)
+Small set of retrieval tools over OpenEMR FHIR/REST. Every tool returns
+**structured data with source identifiers** and fails closed on malformed or
+unauthorized input.
 
-Responsibilities:
+| Tool | Purpose |
+|------|---------|
+| `get_patient_summary(patient_id)` | Cheap orientation: demographics, active problems, recent context |
+| `get_recent_encounters(patient_id)` | Recent visits / encounter metadata; backs fallback |
+| `search_notes(patient_id, query)` | Relevant note excerpts with source IDs |
+| `get_medications(patient_id)` | Active meds + PRN / last-dose history |
+| `get_allergies(patient_id)` | Allergies and reactions |
+| `get_labs(patient_id)` | Recent lab values + dates |
+| `get_vitals(patient_id)` | Recent vitals / trends |
+| `get_problem_list(patient_id)` | Active + historical problems |
+| `get_goals_of_care(patient_id)` | Goals of care / code status (field mapping TBD in audit) |
 
-- Confirm the user is authenticated.
-- Confirm the user can access the active patient.
-- Ensure all retrieval is scoped to the current chart.
+Example contract (source of truth over implementation):
 
-### 3. Agent Orchestrator
+```python
+class MedicationRecord(BaseModel):
+    source_id: str            # FHIR resource id — required for attribution
+    name: str
+    dose: str | None
+    route: str | None
+    is_prn: bool
+    last_administered: datetime | None
 
-The orchestrator handles a multi-turn conversation scoped to one patient chart session, maintaining context across the nurse's follow-up questions. It does not carry memory across different patients or shifts. Its job is to translate each nurse question — with its prior conversational context — into a bounded workflow: build a prompt, decide whether retrieval is needed, call tools, and hand the resulting content to verification.
+class GetMedicationsOutput(BaseModel):
+    patient_id: str
+    records: list[MedicationRecord]
+```
 
-Responsibilities:
+### 7. Verification Layer (deterministic, two checks)
+The trust boundary. Runs **after** the draft, **before** display:
+1. **Source attribution** — each patient-specific/clinical claim must map to a
+   `source_id` from the retrieved records. Unmapped claims are withheld; outside-
+   record content must be explicitly labeled.
+2. **Clinical rule checks** — the answer (and any med it references) is checked
+   against a **versioned JSON rule set**: allergy cross-check against the
+   patient's own allergy list, plus a curated hospice comfort-med
+   interaction/dosage-threshold table. A violation is surfaced as an explicit
+   warning to the nurse (flag); an unsupported claim is blocked.
 
-- Accept a single nurse query.
-- Bind the query to the active patient.
-- Decide what data sources to fetch.
-- Call the LLM only for controlled synthesis.
+Known limits (documented deliberately): the v1 rule set is curated, not
+exhaustive; attribution is record-level, not sentence-diff exact.
 
-### 4. Tool Router
+### 8. Fallback Logic
+On verification failure, missing data, or tool error: return the most recent
+verified visit history, clearly labeled as fallback. Never invents content; never
+an error dump.
 
-The tool router exposes a small set of read-only retrieval tools over OpenEMR data. These tools should be strict about input and output schemas so that each call is predictable and auditable.
+### 9. Observability
+Correlation ID minted at `/chat`, attached to every log line, tool span, and LLM
+call, exported to **Langfuse**. Captures request/error counts, p50/p95 latency,
+tool-call + retry counts, verification pass/fail rate, and token cost per request.
 
-Primary sources:
+## Request Flow (one turn)
 
-- Demographics
-- Encounters
-- Notes
-- Medications
-- Allergies
-- Labs
-- Vitals
-- Problems
-
-Responsibilities:
-
-- Perform read-only data access.
-- Return structured data with source identifiers.
-- Fail closed when a query is malformed or unauthorized.
-
-### 5. Claude Reasoning Step
-
-Claude is used to synthesize a concise answer from the structured chart data. It should not be allowed to freewheel over the entire chart without constraints. Its output is always provisional until the verifier approves it.
-
-Responsibilities:
-
-- Summarize retrieved chart data.
-- Preserve source references.
-- Avoid unsupported claims.
-
-### 6. Verification Layer
-
-The verifier is the most important trust boundary in the system. It checks that every factual statement in the proposed answer is tied to a source in the patient's record. It also enforces the "outside the record" rule: if the answer includes information that is not in the chart, that material must be labeled as external or out of scope.
-
-Responsibilities:
-
-- Map claims to source records.
-- Reject unsupported patient-specific claims.
-- Flag any outside-record content.
-- Enforce clinical-domain constraints where possible.
-
-### 7. Fallback Logic
-
-If verification fails, data is missing, or a tool call breaks, the assistant returns the most recent patient visit history. This is a safety and usefulness feature, not an error dump. The fallback should be concise, clearly labeled, and better than silence.
-
-Responsibilities:
-
-- Detect failure in retrieval or verification.
-- Return the most recent visit history.
-- Preserve a clear fallback indicator for the nurse.
-
-### 8. Observability and Audit Logging
-
-Observability is required from the beginning, not added later. Every request gets a correlation ID, and that ID must appear in logs, tool calls, and model interactions. The system should capture request count, error count, latency, tool failures, verification pass/fail, and fallback usage.
-
-Responsibilities:
-
-- Emit structured logs with correlation IDs.
-- Track tool latency and model latency.
-- Track verification outcomes.
-- Support later evaluation and audit review.
-
-## Request Flow
-
-1. The nurse opens a patient chart in OpenEMR.
-2. The sidebar receives the active patient context.
-3. The nurse submits a question (an opening question or a follow-up in the ongoing chart-session conversation).
-4. The orchestrator builds a bounded prompt using the patient context and the prior turns of the current session.
-5. The tool router fetches the relevant record data.
-6. Claude synthesizes a draft answer from the retrieved data.
-7. The verifier checks every claim against source records.
-8. If the answer is fully supported, it is returned to the sidebar.
-9. If verification fails or a tool fails, fallback logic returns the most recent visit history.
-10. The entire interaction is logged under one correlation ID.
+1. Nurse asks a question (or follow-up) in the sidebar.
+2. Sidebar POSTs `{patient_id, message, session_id, bearer}` to `/chat`.
+3. Sidecar mints a correlation ID, validates token + patient scope (fail closed).
+4. Orchestrator loads session history and builds a bounded, patient-scoped prompt.
+5. Claude selects and calls read-only tools; tools fetch via FHIR/REST with the
+   bearer token and return records + source IDs.
+6. Claude drafts an answer with citations.
+7. Verifier runs source attribution + clinical rule checks against the records.
+8. If clean → stream the cited answer (with any constraint warnings) to the nurse
+   and append the turn to session history.
+9. If not clean or any tool failed → return labeled fallback (recent visit
+   history).
+10. Every step is traced under the one correlation ID in Langfuse.
 
 ## Trust Boundaries
 
-- OpenEMR owns identity, session state, and patient access.
-- The agent backend may only read scoped patient data.
-- Claude may summarize data but may not override source truth.
-- The verifier decides whether a claim is displayable.
-- Fallback logic is allowed to reduce scope, but not invent content.
+- OpenEMR owns identity, session, and patient access (via OAuth2/FHIR).
+- The sidecar may only **read** scoped patient data; it forwards, never elevates.
+- Claude may summarize but may not override source truth.
+- The verifier alone decides what is displayable.
+- Fallback may reduce scope but may not invent content.
 
-## Data and Source of Truth
+## Failure Modes → Behavior
 
-The system should treat OpenEMR as the source of truth for patient data. The assistant should not cache clinical facts in a separate store in v1 unless that cache is clearly treated as a transient performance layer. Any cached output must preserve source references and remain scoped to the current patient.
+| Condition | Behavior |
+|-----------|----------|
+| Missing patient data | Return most complete **verified** summary available |
+| Single tool fails | Skip it; retry once; fall back to visit history if answer can't be grounded |
+| Verification fails | Withhold unsupported claims; fall back |
+| Clinical rule violation | Surface explicit warning; block the offending claim |
+| Unexpected model output | Discard unless verifiable |
+| Unauthorized / cross-patient request | Deny and log; no answer |
+| Dependency down (`/ready` red) | Sidebar shows degraded state; no silent 200s |
 
-## Failure Modes and Expected Behavior
+## Contracts, Endpoints & API Collection
 
-- Missing patient data: return the most complete verified summary available.
-- Tool failure: skip the broken tool and fall back to recent visit history if needed.
-- Verification failure: suppress unsupported claims and fall back.
-- Unexpected model output: discard the output unless it can be verified.
-- Unauthorized access attempt: deny access and log the event.
+- **Contracts:** Pydantic models for every tool I/O and for `/chat`
+  request/response are the canonical schema.
+- **`POST /chat`** request: `{patient_id, message, session_id}` + `Authorization`
+  bearer; response: `{answer, citations[], warnings[], degraded: bool,
+  correlation_id}` (streamed).
+- **API collection:** a Bruno/Postman collection covering `/chat` (happy path,
+  cross-patient refusal, missing-data fallback), `/health`, `/ready` — runnable
+  without reading source.
 
-## Observability, Evaluation, and Quality Gates
+## Observability, Ops & Load
 
-The architecture supports the required sprint deliverables by design:
+- **Dashboards (Langfuse):** request count, error rate, p50/p95 latency, tool
+  call counts, retry counts, verification pass/fail rate, token cost.
+- **Three alerts:** p95 latency > threshold; error rate > threshold; tool
+  failure rate > threshold — each with a documented on-call response.
+- **Health/ready:** `/health` liveness; `/ready` checks OpenEMR + Anthropic +
+  Langfuse.
+- **Baselines + load:** capture CPU/memory/latency/throughput baselines; run
+  load tests at 10 and 50 concurrent users, recording p50/p95/p99 + error rate.
 
-- Correlation IDs for every request.
-- Structured schemas for tool I/O.
-- Health and readiness checks.
-- Dashboard metrics for latency, errors, tool failures, and verification rate.
-- Evaluation cases focused on boundaries, invariants, and regressions.
+## Evaluation Approach
 
-This is important because the project is judged on trustworthiness and defensibility, not just demo polish.
+Eval cases target **boundaries** (empty record, missing meds/allergies, malformed
+query), **invariants** (every claim cites a source; no cross-patient leakage;
+allergy-conflicting med always flagged), and **regressions**. Each case
+documents the failure mode it guards. Details + results live in the eval dataset.
+
+## Requirements Coverage (assignment)
+
+| Requirement | Where addressed |
+|-------------|-----------------|
+| Agentic chatbot (multi-turn, tool-invoking) | Orchestrator + Session Store |
+| Verification: source attribution | Verification §7.1 |
+| Verification: domain constraints | Verification §7.2 + rule set |
+| Authorization / multi-user | Auth & Patient Scoping (inherited OAuth2) |
+| Speed vs completeness | Summary-first + streaming; latency target |
+| HIPAA / PHI / BAA | PRD Security §; minimum-necessary to LLM; no PHI in logs |
+| Failure modes / graceful degradation | Failure Modes table + Fallback |
+| Observability (order, timing, tool failures, tokens/cost) | Correlation ID + Langfuse |
+| Correlation ID across boundaries | Minted at `/chat`, threaded everywhere |
+| Canonical schemas | Pydantic contracts |
+| Dashboards + 3 alerts | Observability, Ops & Load |
+| /health + /ready (meaningful) | Auth §2 + Ops |
+| API collection | Contracts, Endpoints & API Collection |
+| Baselines + load tests | Observability, Ops & Load |
+| Eval (boundaries/invariants/regression) | Evaluation Approach |
 
 ## Tradeoffs
 
-- Session-scoped multi-turn over cross-session memory: supports the nurse's natural follow-up questions while keeping every conversation bounded to one patient and independently verifiable.
-- Sidebar over dashboard: better workflow fit for chart review.
-- Read-only over write access: lower risk and easier to defend.
-- Claude over model experimentation: a defensible, production-oriented starting point.
-- Fallback history over blank failure: preserves utility under partial failure.
+- **Sidecar over in-PHP:** proper AI/eval/observability stack; one more service
+  to deploy.
+- **Inherited OAuth2 over custom authz:** no parallel access model to defend; a
+  hard dependency on OpenEMR's OAuth2/FHIR surface (validate coverage in audit).
+- **Deterministic verifier over LLM-judge:** defensible and testable; a curated
+  rule set must be maintained and is not exhaustive.
+- **Session-scoped multi-turn over cross-session memory:** natural follow-ups,
+  every conversation bounded and verifiable.
+- **Fallback history over blank failure:** utility under partial failure.
 
-## Open Questions
+## MVP Build Order
 
-- Which exact sidebar placement is best inside the existing OpenEMR UI?
-- Should the fallback include a brief warning line or only a silent degradation label?
-- Which source types should carry the highest verification priority when claims conflict?
-- Which retrieval tools are essential in v1 versus safe to defer?
+1. **Sidecar skeleton:** FastAPI app with `/health`, `/ready` (real dependency
+   checks), correlation-ID middleware, Langfuse wired in.
+2. **OpenEMR API access:** register the OAuth2 client; confirm which data the
+   FHIR API exposes vs. the standard REST API (audit output). Implement
+   `get_patient_summary` end-to-end first.
+3. **Tool layer:** remaining read-only tools behind Pydantic contracts; each
+   returns `source_id`s.
+4. **Orchestrator:** Anthropic SDK tool-use loop + in-memory session store;
+   `POST /chat` streaming.
+5. **Verifier v1:** source-attribution check; then the clinical rule set (start
+   with allergy cross-check, add curated interaction/dosage table).
+6. **Fallback + failure paths:** wire the Failure Modes table.
+7. **Sidebar widget:** inject into the OpenEMR chart; pass patient + token; render
+   answer, citations, warnings, fallback label.
+8. **Eval + load:** boundary/invariant/regression suite; baselines; 10 & 50-user
+   load tests; dashboards + alerts.
 
-## Conclusion
+## Assumptions to Validate in the Audit
 
-This architecture is built to satisfy the brief's core constraint: a clinical AI agent must be useful without being casual about truth. The system is intentionally narrow, read-only, and heavily verified so it can support nurses during chart review while remaining auditable and safe enough to justify its place inside a healthcare workflow.
+- OpenEMR's OAuth2/FHIR API exposes enough of the needed data (esp. **goals of
+  care / code status**); the standard REST API is the fallback for gaps.
+- The user's bearer token can be obtained by the sidebar and accepted by the API
+  for on-behalf-of reads (the key integration risk).
+- Sample-data quality for comfort meds, PRN/last-dose timing, and allergies is
+  good enough to ground UC1/UC2 answers.
