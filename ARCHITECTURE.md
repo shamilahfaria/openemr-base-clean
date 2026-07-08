@@ -19,10 +19,12 @@ token, and calls the sidecar's `/chat` endpoint.
 Five design decisions define the architecture. **First, the LLM never speaks
 directly to the nurse.** Claude (via the Anthropic SDK) proposes an answer, but a
 deterministic verification layer decides what is displayed. **Second,
-authorization is inherited, not reinvented** — the sidecar calls OpenEMR's
-REST/FHIR API with the user's bearer token, so OpenEMR remains the source of
-truth for identity and patient access, and every request is scoped to the active
-patient. **Third, verification is deterministic and two-sided**: every clinical
+authorization is layered** — the sidecar calls OpenEMR's REST/FHIR API with the
+user's bearer token, so OpenEMR is the source of truth for identity and
+*resource-level* access. But the audit found OpenEMR enforces **no patient-level**
+authorization for a clinical-user token (AUDIT.md S1), so the sidecar itself
+hard-scopes every request to the active patient — a primary trust boundary we
+own, not an afterthought. **Third, verification is deterministic and two-sided**: every clinical
 claim must map to a retrieved source record (source attribution), and every
 answer is checked against a curated clinical rule set — allergy conflicts,
 interactions, dosage thresholds (domain-constraint enforcement). **Fourth,
@@ -35,7 +37,7 @@ fallback stay predictable and testable.
 The agent surface is deliberately minimal and traces to the use cases in
 `USER.md`: multi-turn exists because the nurse's real questions arrive as chains
 of dependent follow-ups; tool chaining exists because a safety check is itself a
-chain (allergy → last dose → vital). Conversation state is scoped to a single
+chain (allergy → interaction → vital). Conversation state is scoped to a single
 chart session and never persists across patients or shifts.
 
 The primary tradeoff is **breadth for trust.** v1 does not write to the chart,
@@ -52,7 +54,8 @@ which backs the dashboards (latency, errors, tool failures, retries, verificatio
 pass/fail, token cost) and three alerts. Separate `/health` and `/ready`
 endpoints expose liveness and real dependency checks (OpenEMR, Anthropic,
 Langfuse). The goal is an agent a hospital CTO could reason about: narrow,
-read-only, inherited-authz, deterministically verified, and fully traceable.
+read-only, sidecar-scoped to one patient, deterministically verified, and fully
+traceable.
 
 ## System Diagram
 
@@ -62,7 +65,7 @@ flowchart LR
 
   subgraph OpenEMR["OpenEMR (PHP)"]
     Sidebar["Chart Sidebar (JS widget)<br/>active patient + OAuth2 token"]
-    OAuth["OAuth2 / FHIR + REST API<br/>identity + patient authz"]
+    OAuth["OAuth2 / FHIR + REST API<br/>identity + resource authz<br/>(NO patient-level authz — AUDIT S1)"]
     DB[("Patient Record Data")]
     OAuth --> DB
   end
@@ -71,6 +74,7 @@ flowchart LR
 
   subgraph Sidecar["Clinical Co-Pilot Sidecar (Python / FastAPI)"]
     API["/chat  /health  /ready"]
+    Scope["Patient Scope Guard<br/>census / active-chart allow-list"]
     Session["Session Store<br/>(in-memory, chart-scoped history)"]
     Orch["Agent Orchestrator<br/>Anthropic SDK tool-use loop"]
     Tools["Tool Layer<br/>Pydantic-contracted, read-only"]
@@ -79,9 +83,9 @@ flowchart LR
     Fallback["Fallback Logic<br/>recent visit history"]
   end
 
-  API --> Session --> Orch
+  API --> Scope --> Session --> Orch
   Orch <-->|tool calls| Tools
-  Tools -->|FHIR/REST + bearer| OAuth
+  Tools -->|FHIR/REST + bearer, in-scope pid only| OAuth
   Orch -->|draft + citations| Verify
   Tools -->|source records| Verify
   Rules --> Verify
@@ -94,7 +98,13 @@ flowchart LR
   Tools -.-> LF
   Verify -.-> LF
   Fallback -.-> LF
+
+  API ==>|HIPAA audit event| Audit["Audit Trail (append-only)<br/>clinician • patient • PHI-to-LLM manifest"]
+  Verify ==> Audit
 ```
+
+*Langfuse holds IDs/metadata only (PHI-free); the append-only Audit Trail holds
+the compliance record — see §9/§10.*
 
 ## Components
 
@@ -111,12 +121,17 @@ Owns three endpoints:
 - `GET /ready` — validates real dependencies: OpenEMR API reachable, Anthropic
   reachable, Langfuse reachable. Returns 503 if any is down.
 
-### 3. Auth & Patient Scoping
+### 3. Auth & Patient Scoping (Patient Scope Guard)
 The sidecar never mints its own identity. It forwards the user's bearer token to
-OpenEMR's FHIR/REST API, so OpenEMR enforces identity and access. The sidecar
-additionally hard-scopes every tool call to the `patient_id` from the request and
-rejects any tool argument that names a different patient (defense in depth).
-**Fail closed** if the token is missing/expired or scope can't be confirmed.
+OpenEMR's FHIR/REST API, so OpenEMR enforces identity and **resource-level** access
+(which FHIR resource types the token may read). **Critically, the audit found
+OpenEMR enforces no patient-level authorization for a clinical-user token — a
+nurse's token can read any patient the role permits (AUDIT.md S1).** So
+patient-level scoping is *our* responsibility: a **Patient Scope Guard** hard-scopes
+every request and every tool call to the active `patient_id` (and, at scale, the
+nurse's census allow-list) and rejects any tool argument naming a different
+patient. This is a primary trust boundary, not defense in depth. **Fail closed**
+if the token is missing/expired or scope can't be confirmed.
 
 ### 4. Session Store (multi-turn state)
 Conversation history keyed by `session_id` (one open chart = one session), held
@@ -142,12 +157,12 @@ unauthorized input.
 | `get_patient_summary(patient_id)` | Cheap orientation: demographics, active problems, recent context |
 | `get_recent_encounters(patient_id)` | Recent visits / encounter metadata; backs fallback |
 | `search_notes(patient_id, query)` | Relevant note excerpts with source IDs |
-| `get_medications(patient_id)` | Active meds + PRN / last-dose history |
+| `get_medications(patient_id)` | **Ordered** meds + PRN flag/interval (orders only — no administration timing exists; AUDIT D3) |
 | `get_allergies(patient_id)` | Allergies and reactions |
 | `get_labs(patient_id)` | Recent lab values + dates |
 | `get_vitals(patient_id)` | Recent vitals / trends |
 | `get_problem_list(patient_id)` | Active + historical problems |
-| `get_goals_of_care(patient_id)` | Goals of care / code status (field mapping TBD in audit) |
+| `get_goals_of_care(patient_id)` | Code status / goals of care via FHIR `Observation?category=treatment-intervention-preference` (**not** `Goal`/`Consent`; AUDIT A1) |
 
 Example contract (source of truth over implementation):
 
@@ -158,7 +173,7 @@ class MedicationRecord(BaseModel):
     dose: str | None
     route: str | None
     is_prn: bool
-    last_administered: datetime | None
+    prn_interval: str | None    # e.g. "Q4H" — as ordered; NO administration timing (AUDIT D3)
 
 class GetMedicationsOutput(BaseModel):
     patient_id: str
@@ -188,6 +203,18 @@ an error dump.
 Correlation ID minted at `/chat`, attached to every log line, tool span, and LLM
 call, exported to **Langfuse**. Captures request/error counts, p50/p95 latency,
 tool-call + retry counts, verification pass/fail rate, and token cost per request.
+**Langfuse holds only IDs and metadata — never PHI** (AUDIT R3): prompts, tool
+payloads, and answers are redacted/tokenized before export.
+
+### 10. HIPAA Audit Trail (separate from observability)
+The audit found OpenEMR's own logs attribute API reads to the service account, not
+the prompting clinician, and never record the onward disclosure to the LLM
+(AUDIT.md C2). So the Co-Pilot owns its compliance audit chain: an **append-only**
+(WORM / SIEM-forwardable) record per request capturing the authenticated clinician,
+patient id(s), each tool/FHIR call, the **minimum-necessary PHI manifest actually
+sent to the LLM** (hashed/referenced, not verbatim), the model + region used
+(proves BAA routing), the verification outcome, and any fail-closed event. Distinct
+from Langfuse; retained per policy (≥6y for audit metadata).
 
 ## Request Flow (one turn)
 
@@ -207,7 +234,8 @@ tool-call + retry counts, verification pass/fail rate, and token cost per reques
 
 ## Trust Boundaries
 
-- OpenEMR owns identity, session, and patient access (via OAuth2/FHIR).
+- OpenEMR owns identity and **resource-level** authz (via OAuth2/FHIR); the
+  **sidecar owns patient-level scoping** — OpenEMR does not enforce it (AUDIT S1).
 - The sidecar may only **read** scoped patient data; it forwards, never elevates.
 - Claude may summarize but may not override source truth.
 - The verifier alone decides what is displayable.
@@ -261,9 +289,9 @@ documents the failure mode it guards. Details + results live in the eval dataset
 | Agentic chatbot (multi-turn, tool-invoking) | Orchestrator + Session Store |
 | Verification: source attribution | Verification §7.1 |
 | Verification: domain constraints | Verification §7.2 + rule set |
-| Authorization / multi-user | Auth & Patient Scoping (inherited OAuth2) |
+| Authorization / multi-user | Inherited OAuth2 (identity/resource) + **sidecar Patient Scope Guard** (AUDIT S1) |
 | Speed vs completeness | Summary-first + streaming; latency target |
-| HIPAA / PHI / BAA | PRD Security §; minimum-necessary to LLM; no PHI in logs |
+| HIPAA / PHI / BAA | §10 Audit Trail; minimum-necessary to LLM; no PHI in Langfuse (AUDIT C2/R3) |
 | Failure modes / graceful degradation | Failure Modes table + Fallback |
 | Observability (order, timing, tool failures, tokens/cost) | Correlation ID + Langfuse |
 | Correlation ID across boundaries | Minted at `/chat`, threaded everywhere |
@@ -278,8 +306,9 @@ documents the failure mode it guards. Details + results live in the eval dataset
 
 - **Sidecar over in-PHP:** proper AI/eval/observability stack; one more service
   to deploy.
-- **Inherited OAuth2 over custom authz:** no parallel access model to defend; a
-  hard dependency on OpenEMR's OAuth2/FHIR surface (validate coverage in audit).
+- **Inherited identity + sidecar patient-scoping:** we reuse OpenEMR's OAuth2 for
+  identity/resource authz but must add our own patient-level guard, because
+  OpenEMR enforces none (AUDIT S1) — a small custom control we fully own and test.
 - **Deterministic verifier over LLM-judge:** defensible and testable; a curated
   rule set must be maintained and is not exhaustive.
 - **Session-scoped multi-turn over cross-session memory:** natural follow-ups,
@@ -289,27 +318,46 @@ documents the failure mode it guards. Details + results live in the eval dataset
 ## MVP Build Order
 
 1. **Sidecar skeleton:** FastAPI app with `/health`, `/ready` (real dependency
-   checks), correlation-ID middleware, Langfuse wired in.
-2. **OpenEMR API access:** register the OAuth2 client; confirm which data the
-   FHIR API exposes vs. the standard REST API (audit output). Implement
-   `get_patient_summary` end-to-end first.
-3. **Tool layer:** remaining read-only tools behind Pydantic contracts; each
+   checks), correlation-ID middleware, Langfuse wired in (PHI-redacted).
+2. **Synthetic hospice data (prerequisite):** the shipped demo data is empty and
+   2017-stale (AUDIT D1/D2), so generate current-dated synthetic patients with
+   meds, allergies, labs, vitals, problems, encounters, and **code status**
+   (`Observation` treatment-intervention-preference). Without this, nothing is
+   testable.
+3. **OpenEMR API access:** register the OAuth2 confidential client
+   (authorization_code + PKCE); implement `get_patient_summary` end-to-end first.
+4. **Patient Scope Guard:** enforce active-patient scoping in the request path and
+   every tool call (AUDIT S1) — build this *before* the full tool set so scoping is
+   never bolted on.
+5. **Tool layer:** remaining read-only tools behind Pydantic contracts; each
    returns `source_id`s.
-4. **Orchestrator:** Anthropic SDK tool-use loop + in-memory session store;
+6. **Orchestrator:** Anthropic SDK tool-use loop + in-memory session store;
    `POST /chat` streaming.
-5. **Verifier v1:** source-attribution check; then the clinical rule set (start
-   with allergy cross-check, add curated interaction/dosage table).
-6. **Fallback + failure paths:** wire the Failure Modes table.
-7. **Sidebar widget:** inject into the OpenEMR chart; pass patient + token; render
+7. **Verifier v1 + audit trail:** source-attribution check; clinical rule set (start
+   with allergy cross-check, add curated interaction/dosage table); emit the HIPAA
+   audit event (§10) per request.
+8. **Fallback + failure paths:** wire the Failure Modes table.
+9. **Sidebar widget:** inject into the OpenEMR chart; pass patient + token; render
    answer, citations, warnings, fallback label.
-8. **Eval + load:** boundary/invariant/regression suite; baselines; 10 & 50-user
-   load tests; dashboards + alerts.
+10. **Eval + load:** boundary/invariant/regression suite (incl. cross-patient
+   refusal and code-status accuracy); baselines; 10 & 50-user load tests;
+   dashboards + alerts.
 
-## Assumptions to Validate in the Audit
+## Audit Outcomes Incorporated
 
-- OpenEMR's OAuth2/FHIR API exposes enough of the needed data (esp. **goals of
-  care / code status**); the standard REST API is the fallback for gaps.
-- The user's bearer token can be obtained by the sidebar and accepted by the API
-  for on-behalf-of reads (the key integration risk).
-- Sample-data quality for comfort meds, PRN/last-dose timing, and allergies is
-  good enough to ground UC1/UC2 answers.
+The Stage-3 audit ([`AUDIT.md`](AUDIT.md)) resolved this doc's prior open
+assumptions:
+
+- **OAuth2 on-behalf-of reads:** validated — authorization_code + PKCE
+  confidential client (AUDIT S5).
+- **Goals-of-care / code status:** exposed via FHIR `Observation`
+  (treatment-intervention-preference), **not** `Goal`/`Consent` (AUDIT A1/A2).
+- **Patient-level authz:** OpenEMR enforces none for clinical-user tokens → added
+  the Patient Scope Guard (AUDIT S1).
+- **`last-administered` timing:** not in the data model → descoped (AUDIT A3/D3).
+- **Sample data:** empty / 2017-stale → synthetic-data workstream added (AUDIT D1/D2).
+
+**Still to verify on a live instance:** whether
+`patient_treatment_intervention_preferences` is populated in the target dataset;
+the live US Core profile version (`GET /fhir/metadata`); and per-request read
+latency under load (AUDIT P2).

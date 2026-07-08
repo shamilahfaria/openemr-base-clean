@@ -1,79 +1,144 @@
-[![Syntax Status](https://github.com/openemr/openemr/actions/workflows/syntax.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/syntax.yml)
-[![Styling Status](https://github.com/openemr/openemr/actions/workflows/styling.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/styling.yml)
-[![Testing Status](https://github.com/openemr/openemr/actions/workflows/test.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/test.yml)
-[![JS Unit Testing Status](https://github.com/openemr/openemr/actions/workflows/js-test.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/js-test.yml)
-[![PHPStan](https://github.com/openemr/openemr/actions/workflows/phpstan.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/phpstan.yml)
-[![Rector](https://github.com/openemr/openemr/actions/workflows/rector.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/rector.yml)
-[![ShellCheck](https://github.com/openemr/openemr/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/shellcheck.yml)
-[![Docker Compose Linting](https://github.com/openemr/openemr/actions/workflows/docker-compose-lint.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/docker-compose-lint.yml)
-[![Dockerfile Linting](https://github.com/openemr/openemr/actions/workflows/docker-lint-hadolint.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/docker-lint-hadolint.yml)
-[![Isolated Tests](https://github.com/openemr/openemr/actions/workflows/isolated-tests.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/isolated-tests.yml)
-[![Inferno Certification Test](https://github.com/openemr/openemr/actions/workflows/inferno-test.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/inferno-test.yml)
-[![Composer Checks](https://github.com/openemr/openemr/actions/workflows/composer.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/composer.yml)
-[![Composer Require Checker](https://github.com/openemr/openemr/actions/workflows/composer-require-checker.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/composer-require-checker.yml)
-[![API Docs Freshness Checks](https://github.com/openemr/openemr/actions/workflows/api-docs.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/api-docs.yml)
-[![codecov](https://codecov.io/gh/openemr/openemr/graph/badge.svg?token=7Eu3U1Ozdq)](https://codecov.io/gh/openemr/openemr)
+# AgentForge — Clinical Co-Pilot
 
-[![Backers on Open Collective](https://opencollective.com/openemr/backers/badge.svg)](#backers) [![Sponsors on Open Collective](https://opencollective.com/openemr/sponsors/badge.svg)](#sponsors)
+A **read-only, multi-turn AI clinical co-pilot** embedded in
+[OpenEMR](https://open-emr.org), built for one narrow user: an **inpatient
+hospice nurse** who needs fast, source-cited patient context between rooms. The
+agent answers only what the patient's record supports, cites every clinical
+claim, and degrades safely when it cannot verify an answer.
 
-# OpenEMR
+> Built on a fork of [`Gauntlet-HQ/openemr-base-clean`](https://github.com/Gauntlet-HQ/openemr-base-clean)
+> for the Gauntlet AI AgentForge project.
 
-[OpenEMR](https://open-emr.org) is a Free and Open Source electronic health records and medical practice management application. It features fully integrated electronic health records, practice management, scheduling, electronic billing, internationalization, free support, a vibrant community, and a whole lot more. It runs on Windows, Linux, Mac OS X, and many other platforms.
+**🌐 Deployed app:** **https://openemr-production-96cd.up.railway.app** (live on
+Railway) · log in with the configured admin account.
 
-### Contributing
+---
 
-OpenEMR is a leader in healthcare open source software and comprises a large and diverse community of software developers, medical providers and educators with a very healthy mix of both volunteers and professionals. [Join us and learn how to start contributing today!](https://open-emr.org/wiki/index.php/FAQ#How_do_I_begin_to_volunteer_for_the_OpenEMR_project.3F)
+## Project Documentation
 
-> Already comfortable with git? Check out [CONTRIBUTING.md](CONTRIBUTING.md) for quick setup instructions and requirements for contributing to OpenEMR by resolving a bug or adding an awesome feature 😊.
+The planning and audit deliverables are the source of truth for this project:
 
-### Support
+| Doc | What it covers |
+|-----|----------------|
+| [`PRD.md`](PRD.md) | Product requirements — what the co-pilot must do |
+| [`AUDIT.md`](AUDIT.md) | Stage-3 audit of the OpenEMR base (security, architecture, performance, data quality, compliance) |
+| [`USER.md`](USER.md) | Target user (hospice RN), workflow, and use cases — *why*, for *whom* |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | How the agent is built: sidecar, verification, observability, MVP build order |
 
-Community and Professional support can be found [here](https://open-emr.org/wiki/index.php/OpenEMR_Support_Guide).
+## Architecture Overview
 
-Extensive documentation and forums can be found on the [OpenEMR website](https://open-emr.org) that can help you to become more familiar about the project 📖.
+The Clinical Co-Pilot is a **separate Python / FastAPI sidecar** that runs
+alongside OpenEMR — AI, observability, and evaluation tooling stay out of the PHP
+monolith. The OpenEMR chart sidebar is a thin client that sends the nurse's
+question (and the signed-in user's OAuth2 token) to the sidecar's `/chat`
+endpoint.
 
-### Reporting Issues and Bugs
+Key decisions (full detail in [`ARCHITECTURE.md`](ARCHITECTURE.md)):
 
-Report these on the [Issue Tracker](https://github.com/openemr/openemr/issues). If you are unsure if it is an issue/bug, then always feel free to use the [Forum](https://community.open-emr.org/) and [Chat](https://www.open-emr.org/chat/) to discuss about the issue 🪲.
+- **Data access:** OpenEMR's **REST / FHIR API** with the user's OAuth2 bearer
+  token (authorization_code + PKCE).
+- **Patient scoping:** enforced **in the sidecar** — the audit found OpenEMR does
+  not enforce patient-level authorization for a clinical-user token
+  ([`AUDIT.md`](AUDIT.md) S1).
+- **Reasoning:** Claude via the Anthropic SDK, in a thin tool-use loop. The model
+  never speaks directly to the nurse.
+- **Verification:** deterministic — every claim must map to a retrieved source
+  record, plus rule-based clinical checks (allergy / interaction / dosage).
+- **Failure handling:** on any verification or tool failure, fall back to a
+  clearly-labeled recent-visit summary.
+- **Observability:** correlation ID per request into **Langfuse** (PHI-free); a
+  separate append-only HIPAA audit trail records what PHI was disclosed to the LLM.
 
-### Reporting Security Vulnerabilities
+```
+Nurse ─▶ OpenEMR sidebar ─▶ FastAPI sidecar
+            (patient + token)      │
+                                   ├─ Patient Scope Guard (active patient only)
+                                   ├─ Agent Orchestrator (Claude tool-use loop)
+                                   ├─ Read-only FHIR/REST tools ─▶ OpenEMR API
+                                   ├─ Deterministic Verifier (attribution + rules)
+                                   └─ Fallback ─▶ recent visit history
+```
 
-Check out [SECURITY.md](.github/SECURITY.md)
+## Running Locally
 
-### API
+**Prerequisite:** Docker.
 
-Check out [API_README.md](API_README.md)
+```bash
+cd docker/development-easy
+docker compose up --detach --wait
+```
 
-### Docker
+| Service | URL |
+|---------|-----|
+| OpenEMR (HTTP) | http://localhost:8300/ |
+| OpenEMR (HTTPS) | https://localhost:9300/ |
+| phpMyAdmin | http://localhost:8310/ |
 
-Check out [DOCKER_README.md](DOCKER_README.md)
+Login: **`admin` / `pass`**
 
-### FHIR
+Tests and tooling run through `openemr-cmd` (see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for install). From any directory:
 
-Check out [FHIR_README.md](FHIR_README.md)
+```bash
+openemr-cmd unit-test        # alias: ut
+openemr-cmd php-log          # alias: pl  (view PHP error log)
+```
 
-### For Developers
+### Sample patient data
 
-If using OpenEMR directly from the code repository, then the following commands will build OpenEMR (Node.js version 24.* is required) :
+The committed base ships only demographic sample rows, and the standard OpenEMR
+demo dataset is dated ~2017 (see [`AUDIT.md`](AUDIT.md) D1/D2). To populate the
+instance with realistic, **current-dated** patients:
 
-```shell
+```bash
+openemr-cmd import-random-patients 100
+```
+
+This uses [Synthea](https://github.com/synthetichealth/synthea) to generate
+synthetic patients — with encounters, medications, conditions, allergies, labs,
+and vitals — as CCDA and import them. First run downloads Synthea + a Java runtime;
+each patient takes a few seconds.
+
+> **Note:** Synthea does not produce hospice-specific patients or **code status /
+> goals-of-care** data (OpenEMR's `patient_treatment_intervention_preferences`,
+> [`AUDIT.md`](AUDIT.md) D4). That hospice-critical field is seeded separately.
+
+## Deployment
+
+The app is **deployed live on Railway** (project `openemr-copilot`) using the
+committed [`railway.json`](railway.json) → [`docker/railway/Dockerfile`](docker/railway/Dockerfile),
+with a managed **MySQL** service and a persistent volume for `sites/`. The agent
+sidecar will deploy to the same infrastructure. Environment variables are set in
+the Railway service (see [`docker/railway/README.md`](docker/railway/README.md)
+and [`docker/railway/.env.railway.example`](docker/railway/.env.railway.example)) —
+notably `OPENEMR_SETTING_rest_api=1` to enable the REST/FHIR API the Co-Pilot uses.
+
+**Live URL:** https://openemr-production-96cd.up.railway.app
+
+---
+
+## About the OpenEMR Base
+
+[OpenEMR](https://open-emr.org) is a Free and Open Source electronic health
+records and medical practice management application.
+
+- API: [`API_README.md`](API_README.md) · FHIR: [`FHIR_README.md`](FHIR_README.md)
+  · Docker: [`DOCKER_README.md`](DOCKER_README.md)
+- Contributing to upstream: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Security policy: [`.github/SECURITY.md`](.github/SECURITY.md)
+
+### For developers building OpenEMR from source
+
+Node.js 24.* is required:
+
+```bash
 composer install --no-dev
 npm install
 npm run build
 composer dump-autoload -o
 ```
 
-### Contributors
-
-This project exists thanks to all the people who have contributed. [[Contribute]](CONTRIBUTING.md).
-<a href="https://github.com/openemr/openemr/graphs/contributors"><img src="https://opencollective.com/openemr/contributors.svg?width=890" /></a>
-
-
-### Sponsors
-
-Thanks to our [ONC Certification Major Sponsors](https://www.open-emr.org/wiki/index.php/OpenEMR_Certification_Stage_III_Meaningful_Use#Major_sponsors)!
-
-
 ### License
 
-[GNU GPL](LICENSE)
+[GNU GPL v3](LICENSE). OpenEMR is © its contributors; this fork preserves all
+upstream copyright and licensing.

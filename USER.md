@@ -36,9 +36,9 @@ misreported. She repeatedly performs the same synthesis — "what changed, what'
 the current symptom burden, what am I about to give, and what are this patient's
 wishes." That repetition, under pressure, across several rapidly-changing
 patients, is precisely the shape of problem an agent is good at. Picking her
-narrows *everything* downstream: the data the agent needs (comfort meds and PRN
-usage, allergies, latest labs/vitals, active problems, recent notes/encounters,
-and goals-of-care / advance-directive context), the latency budget (seconds, at
+narrows *everything* downstream: the data the agent needs (ordered comfort meds
+incl. PRN flag/interval, allergies, latest labs/vitals, active problems, recent
+notes/encounters, and goals-of-care / code-status context), the latency budget (seconds, at
 a WOW, mid-workflow), and what the agent must **refuse** to do (anything write,
 diagnostic, or outside this patient's record).
 
@@ -63,7 +63,7 @@ Maria takes handoff on 5 patients she may not have had yesterday. For each, in
 the ~30 seconds before she walks into the room, she needs to answer: *Who is
 this, what is their current symptom burden, what changed since the last shift,
 and what are their goals of care / code status?* Today that means opening the
-chart and scanning notes, the MAR/PRN history, labs, and vitals across several
+chart and scanning notes, the medication list, labs, and vitals across several
 tabs, per patient, while report is still going. This is where the agent earns
 its place.
 
@@ -72,8 +72,8 @@ documentation event.**
 Throughout the shift, before Maria gives a PRN comfort medication, speaks with a
 family, or charts an assessment, she re-opens the chart to confirm the relevant
 context — and her questions naturally **build on each other**: *"What's her pain
-regimen?"* → *"When was the last PRN morphine given?"* → *"Any allergy to the
-alternatives?"* She asks, reads a concise sourced answer, follows up, acts, and
+regimen?"* → *"What's the morphine ordered at, and is it PRN?"* → *"Any allergy to
+the alternatives?"* She asks, reads a concise sourced answer, follows up, acts, and
 charts.
 
 **The output she does something with:** a short, scannable, **source-cited**
@@ -119,17 +119,18 @@ chart view).
 
 - **Moment:** Before giving a PRN comfort medication or charting, Maria asks a
   focused question and follows the thread — e.g. *"Any allergy or interaction
-  concern before I give this med?"* → *"When was it last given and how much?"* →
-  *"What's the latest respiratory rate?"*
-- **Agent returns:** The specific clinically-relevant slice (comfort medications
-  and PRN/last-dose history, allergies, labs, vitals, active problems) with
-  source IDs, plus a clear label on anything that falls **outside the patient's
-  record**.
+  concern before I give this med?"* → *"What else is she ordered that could
+  interact?"* → *"What's the latest respiratory rate?"*
+- **Agent returns:** The specific clinically-relevant slice (ordered comfort
+  medications incl. PRN flag and dosing interval, allergies, labs, vitals, active
+  problems) with source IDs, plus a clear label on anything that falls **outside
+  the patient's record**.
 - **Why a multi-turn agent (not a search bar or chart view):** Maria's goal is
   **interpretation, not raw retrieval**, and the safety check is a *chain* —
-  allergy, then last dose, then a vital sign — where each question depends on the
-  last answer. Cross-referencing an allergy list against a med list against PRN
-  timing across four tabs under time pressure is exactly where errors happen. The
+  allergy, then interactions, then a vital sign — where each question depends on
+  the last answer. Cross-referencing an allergy list against a med list against
+  ordered intervals across four tabs under time pressure is exactly where errors
+  happen. The
   agent carries that context across turns and can say "nothing relevant found"
   instead of making her prove a negative by clicking through empty views.
 
@@ -159,13 +160,19 @@ chart view).
 | Goals-of-care / code-status surfacing | UC1 |
 | Source-attribution verification layer | UC1, UC2 (invariant: claims cite a source) |
 | Recent-visit-history fallback + refusal path | UC3 |
-| Read-only, patient-scoped access enforced via OpenEMR session | UC2, UC3 (authorization boundary) |
+| Read-only access + **sidecar-enforced patient scoping** (OpenEMR has no patient-level authz — see AUDIT.md S1) | UC2, UC3 (authorization boundary) |
 | Multi-turn conversation, scoped to one patient chart session | UC1, UC2 — the nurse's real questions arrive as chains of dependent follow-ups |
 
 **What is deliberately *not* here (and therefore not built in v1):** conversation
 memory across different patients or across shifts, write/order/prescribe actions,
 general medical Q&A, and cross-patient queries. None of them trace to a use case
 above, so per the assignment's own rule they stay out of v1.
+
+**Cut by the audit — a capability we will *not* claim:** *medication
+administration timing* ("when was the last PRN dose given"). OpenEMR's data model
+records medication **orders**, not administration events — there is no MAR (see
+[`AUDIT.md`](AUDIT.md) D3/A3). The agent surfaces what is *ordered* (drug, dose,
+PRN flag, interval) and must never state when a dose was administered.
 
 ---
 
@@ -178,6 +185,14 @@ above, so per the assignment's own rule they stay out of v1.
   session** — chosen because UC1 and UC2 are genuinely iterative. Memory does not
   persist across patients or shifts; that boundary keeps each conversation
   verifiable and is the line to defend in the interview.
-- **Goals-of-care / code status:** this data may be inconsistently structured in
-  the OpenEMR sample data — confirm during the audit which fields hold it, since
-  a wrong code-status claim is the highest-severity failure for this user.
+- **Goals-of-care / code status (resolved by the audit):** reachable via FHIR
+  `Observation?category=treatment-intervention-preference` (DNR/CPR/comfort-measures)
+  — **not** `Goal`/`Consent`, which return unrelated data (see [`AUDIT.md`](AUDIT.md)
+  A1/A2). Caveat: it is likely **unpopulated** in the stale 2017 demo dataset, so we
+  must seed it in synthetic test data. A wrong code-status claim remains the
+  highest-severity failure for this user.
+- **Data reality (from the audit):** the shipped demo data is near-empty and dated
+  ~2017, so "recent context" (UC1) is untestable as-is. We will generate fresh,
+  current-dated **synthetic hospice patients** (meds, allergies, labs, vitals,
+  problems, encounters, code status) to make UC1/UC2 real (see [`AUDIT.md`](AUDIT.md)
+  D1/D2).

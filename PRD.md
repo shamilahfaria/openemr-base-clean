@@ -38,9 +38,9 @@ now.
 - Read-only chart interpretation via a sidebar assistant.
 - Multi-turn conversation scoped to a single open patient chart session.
 - Sample OpenEMR data only.
-- Data types: demographics, encounters, notes, medications (incl. PRN/last-dose
-  history), allergies, labs, vitals, problems, and goals-of-care / code status
-  where available.
+- Data types: demographics, encounters, notes, medications (orders incl. PRN
+  flag/interval — no administration timing exists, see AUDIT.md), allergies, labs,
+  vitals, problems, and goals-of-care / code status where available.
 
 **Out of scope (v1):**
 
