@@ -101,7 +101,11 @@ each patient takes a few seconds.
 
 > **Note:** Synthea does not produce hospice-specific patients or **code status /
 > goals-of-care** data (OpenEMR's `patient_treatment_intervention_preferences`,
-> [`AUDIT.md`](AUDIT.md) D4). That hospice-critical field is seeded separately.
+> [`AUDIT.md`](AUDIT.md) D4). That hospice-critical field is seeded separately via
+> [`sql/agentforge_seed_code_status.sql`](sql/agentforge_seed_code_status.sql).
+
+See [`docker/railway/DATA_LOAD.md`](docker/railway/DATA_LOAD.md) for the full
+data-load runbook (local dev stack and the deployed Railway instance).
 
 ## Deployment
 

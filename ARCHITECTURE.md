@@ -3,59 +3,59 @@
 ## High-Level Summary
 
 The Clinical Co-Pilot is a **read-only, multi-turn AI assistant** embedded in
-OpenEMR as a chart sidebar, serving one narrow user: an inpatient hospice nurse
-(see [`USER.md`](USER.md)). It exists to give her a fast, **source-cited**
-answer to "what changed, what's the current comfort status, what am I about to
-give, and what are this patient's wishes" without scanning tabs — and to behave
-predictably when data or tools are incomplete.
+OpenEMR as a chart sidebar, for one narrow user: an inpatient hospice nurse (see
+[`USER.md`](USER.md)). It answers "what changed, what's the current comfort
+status, what am I about to give, and what are this patient's wishes" with
+**source-cited** answers — and behaves predictably when data or tools are
+incomplete.
 
-The system is a **separate Python / FastAPI sidecar** that runs alongside
-OpenEMR, not inside the PHP monolith. This keeps AI, observability, and
-evaluation tooling in a stack built for it (Pydantic, Langfuse, load tests) and
-gives a clean deployment and scaling boundary. The OpenEMR sidebar is a thin
-client: it holds the active patient context and the signed-in user's OAuth2
-token, and calls the sidecar's `/chat` endpoint.
+It runs as a **separate Python / FastAPI sidecar** alongside OpenEMR, not inside
+the PHP monolith, so AI, observability, and evaluation tooling live in a stack
+built for them (Pydantic, Langfuse, load tests). The OpenEMR sidebar is a thin
+client: it holds the active patient and the signed-in user's OAuth2 token and
+calls the sidecar's `/chat` endpoint.
 
-Five design decisions define the architecture. **First, the LLM never speaks
-directly to the nurse.** Claude (via the Anthropic SDK) proposes an answer, but a
-deterministic verification layer decides what is displayed. **Second,
-authorization is layered** — the sidecar calls OpenEMR's REST/FHIR API with the
-user's bearer token, so OpenEMR is the source of truth for identity and
-*resource-level* access. But the audit found OpenEMR enforces **no patient-level**
-authorization for a clinical-user token (AUDIT.md S1), so the sidecar itself
-hard-scopes every request to the active patient — a primary trust boundary we
-own, not an afterthought. **Third, verification is deterministic and two-sided**: every clinical
-claim must map to a retrieved source record (source attribution), and every
-answer is checked against a curated clinical rule set — allergy conflicts,
-interactions, dosage thresholds (domain-constraint enforcement). **Fourth,
-failure shrinks scope rather than inventing** — on any verification or tool
-failure the agent returns a clearly-labeled fallback to the most recent verified
-visit history. **Fifth, every tool has a strict Pydantic contract**, treated as
-the source of truth over the implementation, so retrieval, verification, and
-fallback stay predictable and testable.
+Five decisions define the system. **(1) The LLM never speaks directly to the
+nurse** — Claude proposes an answer; a deterministic verifier decides what is
+shown. **(2) Authorization is layered** — the sidecar reads OpenEMR's REST/FHIR
+API with the user's bearer token (OpenEMR owns identity and resource-level
+access), but the audit found OpenEMR enforces *no patient-level* authorization
+for a clinical-user token (AUDIT.md S1), so the sidecar itself hard-scopes every
+request to the active patient. **(3) Verification is deterministic and
+two-sided** — every clinical claim must map to a retrieved source record
+(attribution), and answers are checked against a curated clinical rule set
+(allergy / interaction / dosage). **(4) Failure shrinks scope** — on any
+verification or tool failure the agent returns a clearly-labeled fallback to
+recent visit history rather than inventing. **(5) Every tool has a strict
+Pydantic contract**, the source of truth over the implementation.
 
-The agent surface is deliberately minimal and traces to the use cases in
-`USER.md`: multi-turn exists because the nurse's real questions arrive as chains
-of dependent follow-ups; tool chaining exists because a safety check is itself a
-chain (allergy → interaction → vital). Conversation state is scoped to a single
-chart session and never persists across patients or shifts.
+Two tradeoffs are deliberate. **Breadth for trust:** v1 does not write to the
+chart, answer general medical questions, or carry memory across patients/shifts —
+those are safety decisions, not gaps. **Speed vs. completeness:** the agent
+answers from a cheap patient-summary first and streams within ~1–2s, chaining
+deeper retrieval only when the question needs it, targeting p95 end-to-end
+< ~8–10s at the workstation.
 
-The primary tradeoff is **breadth for trust.** v1 does not write to the chart,
-does not answer general medical questions, and does not carry cross-session
-memory — those are safety decisions, not missing features. The second tradeoff
-is **speed vs. completeness**, managed explicitly: the agent answers from a cheap
-patient-summary tool first and streams output within 1–2s, chaining deeper
-retrieval only when the question requires it, targeting a p95 end-to-end under
-~8–10s at the workstation.
+Trust and compliance are built in from the first request. A **correlation ID**
+threads the sidebar, agent, every tool call, and every LLM interaction into
+**Langfuse** (metadata only — never PHI), backing the dashboards and alerts.
+Separately, because OpenEMR's logs can't attribute an API read to the prompting
+clinician or record the LLM disclosure (AUDIT.md C2), the sidecar emits its own
+**append-only HIPAA audit trail**. Separate `/health` and `/ready` endpoints
+expose liveness and real dependency checks. The result is an agent a hospital CTO
+could reason about: narrow, read-only, scoped to one patient, deterministically
+verified, and fully traceable.
 
-Observability is wired from the first request: a **correlation ID** flows through
-the sidebar, agent, every tool call, and every LLM interaction into **Langfuse**,
-which backs the dashboards (latency, errors, tool failures, retries, verification
-pass/fail, token cost) and three alerts. Separate `/health` and `/ready`
-endpoints expose liveness and real dependency checks (OpenEMR, Anthropic,
-Langfuse). The goal is an agent a hospital CTO could reason about: narrow,
-read-only, sidecar-scoped to one patient, deterministically verified, and fully
-traceable.
+## Key Decisions at a Glance
+
+| Decision | Why | Cost we accept |
+|----------|-----|----------------|
+| FastAPI sidecar (not in-PHP) | AI/eval/observability in a fit stack; clean scaling boundary | one more service to deploy |
+| Read via OpenEMR FHIR/REST + OAuth2 passthrough | reuse OpenEMR identity; standards-based, versioned | depends on FHIR coverage |
+| **Sidecar-enforced patient scoping** | OpenEMR has no patient-level authz (AUDIT S1) | a small custom guard we own + test |
+| Deterministic verifier (attribution + rules), not LLM-judge | defensible, testable, no verifier hallucination | curated rules aren't exhaustive |
+| Multi-turn scoped to one chart session | matches the nurse's iterative follow-ups | no cross-patient/shift memory |
+| Safe fallback over blank failure | stays useful under partial failure | may narrow the answer |
 
 ## System Diagram
 
@@ -70,7 +70,7 @@ flowchart LR
     OAuth --> DB
   end
 
-  Sidebar -->|POST /chat<br/>{patient_id, message, session_id, bearer}| API
+  Sidebar -->|"POST /chat<br/>(patient_id, message, session_id, bearer)"| API
 
   subgraph Sidecar["Clinical Co-Pilot Sidecar (Python / FastAPI)"]
     API["/chat  /health  /ready"]
@@ -104,260 +104,214 @@ flowchart LR
 ```
 
 *Langfuse holds IDs/metadata only (PHI-free); the append-only Audit Trail holds
-the compliance record — see §9/§10.*
+the compliance record.*
 
 ## Components
 
-### 1. OpenEMR Chart Sidebar (thin client)
-A JS widget injected into the patient chart page. Responsibilities: capture the
-active `patient_id` and the signed-in user's OAuth2 access token, POST turns to
-the sidecar's `/chat`, and render streamed answers, citations, constraint
-warnings, and the fallback label. It contains **no** agent logic.
+1. **Chart Sidebar (thin client).** JS widget in the OpenEMR chart page. Captures
+   the active `patient_id` + OAuth2 token, POSTs turns to `/chat`, renders
+   streamed answers, citations, warnings, and the fallback label. No agent logic.
+2. **FastAPI Sidecar.** Owns `POST /chat` (a conversation turn, streamed),
+   `GET /health` (liveness), `GET /ready` (checks OpenEMR + Anthropic + Langfuse
+   reachable; 503 if any is down).
+3. **Patient Scope Guard.** The sidecar forwards the user's bearer token so
+   OpenEMR enforces identity + resource-level access, then **hard-scopes every
+   request and tool call to the active `patient_id`** (OpenEMR enforces no
+   patient-level authz — AUDIT S1) and rejects any other patient. **Fails closed**
+   on missing/expired token or unconfirmable scope.
+4. **Session Store.** Conversation history keyed by `session_id` (one open chart =
+   one session), **in-memory and ephemeral**; dropped when the session ends. No
+   cross-patient/shift memory. (Redis is the scale-out swap, not needed for MVP.)
+5. **Agent Orchestrator.** A thin Anthropic SDK tool-use loop: load session
+   history → build a bounded, patient-scoped prompt → let Claude call read-only
+   tools → hand the draft + cited `source_id`s to the verifier. Tools are the only
+   data path. Model: Claude Sonnet-class; the verifier is **not** an LLM.
+6. **Tool Layer.** Small set of read-only FHIR/REST tools, each Pydantic-contracted
+   and returning structured data **with source identifiers** (see Tools &
+   Contracts). Fails closed on malformed/unauthorized input.
+7. **Verification Layer (deterministic).** The trust boundary — runs after the
+   draft, before display (see Verification).
+8. **Fallback Logic.** On verification failure, missing data, or tool error:
+   return recent verified visit history, clearly labeled. Never invents; never an
+   error dump.
+9. **Observability.** Correlation ID minted at `/chat`, on every log line, tool
+   span, and LLM call, exported to **Langfuse** — **IDs/metadata only, never PHI**
+   (AUDIT R3).
+10. **HIPAA Audit Trail** (separate from Langfuse). Append-only, per request:
+    authenticated clinician, patient id(s), each tool/FHIR call, the
+    **minimum-necessary PHI manifest sent to the LLM** (hashed/referenced), the
+    model + region (proves BAA routing), verification outcome, and any fail-closed
+    event. Retained ≥6y (metadata). Closes AUDIT C2.
 
-### 2. FastAPI Sidecar (the agent service)
-Owns three endpoints:
-- `POST /chat` — one conversation turn (streaming response).
-- `GET /health` — process liveness only.
-- `GET /ready` — validates real dependencies: OpenEMR API reachable, Anthropic
-  reachable, Langfuse reachable. Returns 503 if any is down.
+## Request Flow (one turn)
 
-### 3. Auth & Patient Scoping (Patient Scope Guard)
-The sidecar never mints its own identity. It forwards the user's bearer token to
-OpenEMR's FHIR/REST API, so OpenEMR enforces identity and **resource-level** access
-(which FHIR resource types the token may read). **Critically, the audit found
-OpenEMR enforces no patient-level authorization for a clinical-user token — a
-nurse's token can read any patient the role permits (AUDIT.md S1).** So
-patient-level scoping is *our* responsibility: a **Patient Scope Guard** hard-scopes
-every request and every tool call to the active `patient_id` (and, at scale, the
-nurse's census allow-list) and rejects any tool argument naming a different
-patient. This is a primary trust boundary, not defense in depth. **Fail closed**
-if the token is missing/expired or scope can't be confirmed.
+1. Nurse asks a question or follow-up in the sidebar.
+2. Sidebar `POST`s `{patient_id, message, session_id}` + bearer to `/chat`.
+3. Sidecar mints a correlation ID; validates token + patient scope (**fail closed**).
+4. Orchestrator loads session history; builds a bounded, patient-scoped prompt.
+5. Claude calls read-only tools; tools fetch via FHIR/REST and return records + `source_id`s.
+6. Claude drafts an answer with citations.
+7. Verifier runs source attribution + clinical rule checks against the records.
+8. **Clean** → stream the cited answer (+ any warnings); append the turn to session history.
+9. **Not clean / any tool failed** → return the labeled fallback.
+10. Every step traces under the one correlation ID; an audit event is emitted.
 
-### 4. Session Store (multi-turn state)
-Conversation history keyed by `session_id` (one open chart = one session), held
-**in-memory** and ephemeral for v1. No PHI is persisted beyond process lifetime;
-history is dropped when the chart session ends. (Redis is the scale-out swap, not
-needed for MVP.)
+## Verification (the crux)
 
-### 5. Agent Orchestrator
-A thin Anthropic SDK tool-use loop. Per turn it: loads session history, builds a
-bounded prompt with the active patient context, lets Claude call read-only tools,
-and hands the draft answer + cited source IDs to the verifier. It does not let
-Claude free-roam the chart; tools are the only data path. Model: Claude
-Sonnet-class (latency/cost fit for structured summarization); the verifier is
-**not** an LLM.
+Two deterministic checks, after the draft and before display:
 
-### 6. Tool Layer (read-only, Pydantic-contracted)
-Small set of retrieval tools over OpenEMR FHIR/REST. Every tool returns
-**structured data with source identifiers** and fails closed on malformed or
-unauthorized input.
+1. **Source attribution.** Each patient-specific/clinical claim must map to a
+   `source_id` from the retrieved records. Unmapped claims are **withheld**;
+   outside-record content is **explicitly labeled**.
+2. **Clinical rule checks.** The answer (and any med it names) is checked against a
+   **versioned JSON rule set**: allergy cross-check against the patient's own
+   allergy list, plus a curated hospice comfort-med interaction/dosage-threshold
+   table. A violation raises an explicit **warning**; an unsupported claim is
+   **blocked**.
 
-| Tool | Purpose |
+*Known limits (stated deliberately):* the v1 rule set is curated, not exhaustive;
+attribution is record-level, not sentence-exact.
+
+## Tools & Contracts
+
+Pydantic models are the canonical contract for every tool I/O and for `/chat`.
+
+| Tool | Returns |
 |------|---------|
 | `get_patient_summary(patient_id)` | Cheap orientation: demographics, active problems, recent context |
 | `get_recent_encounters(patient_id)` | Recent visits / encounter metadata; backs fallback |
 | `search_notes(patient_id, query)` | Relevant note excerpts with source IDs |
-| `get_medications(patient_id)` | **Ordered** meds + PRN flag/interval (orders only — no administration timing exists; AUDIT D3) |
-| `get_allergies(patient_id)` | Allergies and reactions |
+| `get_medications(patient_id)` | **Ordered** meds + PRN flag/interval (orders only — no administration timing; AUDIT D3) |
+| `get_allergies(patient_id)` | Allergies + reactions |
 | `get_labs(patient_id)` | Recent lab values + dates |
 | `get_vitals(patient_id)` | Recent vitals / trends |
 | `get_problem_list(patient_id)` | Active + historical problems |
 | `get_goals_of_care(patient_id)` | Code status / goals of care via FHIR `Observation?category=treatment-intervention-preference` (**not** `Goal`/`Consent`; AUDIT A1) |
 
-Example contract (source of truth over implementation):
-
 ```python
+# Tool output — every clinical record carries a source_id for attribution.
 class MedicationRecord(BaseModel):
-    source_id: str            # FHIR resource id — required for attribution
+    source_id: str              # FHIR resource id — required for attribution
     name: str
     dose: str | None
     route: str | None
     is_prn: bool
-    prn_interval: str | None    # e.g. "Q4H" — as ordered; NO administration timing (AUDIT D3)
+    prn_interval: str | None    # e.g. "Q4H", as ordered; NO administration timing (AUDIT D3)
 
-class GetMedicationsOutput(BaseModel):
-    patient_id: str
-    records: list[MedicationRecord]
+# API contract — the build target for the sidebar and the API collection.
+class ChatRequest(BaseModel):
+    patient_id: str             # Scope Guard binds every tool call to this
+    message: str
+    session_id: str             # one open chart = one session
+
+class Citation(BaseModel):
+    claim: str
+    source_id: str
+    resource_type: str          # e.g. "MedicationRequest"
+
+class ChatResponse(BaseModel):
+    answer: str
+    citations: list[Citation]
+    warnings: list[str]         # clinical-rule flags
+    degraded: bool              # true when the fallback path was taken
+    correlation_id: str
 ```
 
-### 7. Verification Layer (deterministic, two checks)
-The trust boundary. Runs **after** the draft, **before** display:
-1. **Source attribution** — each patient-specific/clinical claim must map to a
-   `source_id` from the retrieved records. Unmapped claims are withheld; outside-
-   record content must be explicitly labeled.
-2. **Clinical rule checks** — the answer (and any med it references) is checked
-   against a **versioned JSON rule set**: allergy cross-check against the
-   patient's own allergy list, plus a curated hospice comfort-med
-   interaction/dosage-threshold table. A violation is surfaced as an explicit
-   warning to the nurse (flag); an unsupported claim is blocked.
-
-Known limits (documented deliberately): the v1 rule set is curated, not
-exhaustive; attribution is record-level, not sentence-diff exact.
-
-### 8. Fallback Logic
-On verification failure, missing data, or tool error: return the most recent
-verified visit history, clearly labeled as fallback. Never invents content; never
-an error dump.
-
-### 9. Observability
-Correlation ID minted at `/chat`, attached to every log line, tool span, and LLM
-call, exported to **Langfuse**. Captures request/error counts, p50/p95 latency,
-tool-call + retry counts, verification pass/fail rate, and token cost per request.
-**Langfuse holds only IDs and metadata — never PHI** (AUDIT R3): prompts, tool
-payloads, and answers are redacted/tokenized before export.
-
-### 10. HIPAA Audit Trail (separate from observability)
-The audit found OpenEMR's own logs attribute API reads to the service account, not
-the prompting clinician, and never record the onward disclosure to the LLM
-(AUDIT.md C2). So the Co-Pilot owns its compliance audit chain: an **append-only**
-(WORM / SIEM-forwardable) record per request capturing the authenticated clinician,
-patient id(s), each tool/FHIR call, the **minimum-necessary PHI manifest actually
-sent to the LLM** (hashed/referenced, not verbatim), the model + region used
-(proves BAA routing), the verification outcome, and any fail-closed event. Distinct
-from Langfuse; retained per policy (≥6y for audit metadata).
-
-## Request Flow (one turn)
-
-1. Nurse asks a question (or follow-up) in the sidebar.
-2. Sidebar POSTs `{patient_id, message, session_id, bearer}` to `/chat`.
-3. Sidecar mints a correlation ID, validates token + patient scope (fail closed).
-4. Orchestrator loads session history and builds a bounded, patient-scoped prompt.
-5. Claude selects and calls read-only tools; tools fetch via FHIR/REST with the
-   bearer token and return records + source IDs.
-6. Claude drafts an answer with citations.
-7. Verifier runs source attribution + clinical rule checks against the records.
-8. If clean → stream the cited answer (with any constraint warnings) to the nurse
-   and append the turn to session history.
-9. If not clean or any tool failed → return labeled fallback (recent visit
-   history).
-10. Every step is traced under the one correlation ID in Langfuse.
-
-## Trust Boundaries
-
-- OpenEMR owns identity and **resource-level** authz (via OAuth2/FHIR); the
-  **sidecar owns patient-level scoping** — OpenEMR does not enforce it (AUDIT S1).
-- The sidecar may only **read** scoped patient data; it forwards, never elevates.
-- Claude may summarize but may not override source truth.
-- The verifier alone decides what is displayable.
-- Fallback may reduce scope but may not invent content.
+Bearer token travels in the `Authorization` header; `/chat` responses stream. A
+**Bruno/Postman collection** covers `/chat` (happy path, cross-patient refusal,
+missing-data fallback), `/health`, and `/ready` — runnable without reading source.
 
 ## Failure Modes → Behavior
 
 | Condition | Behavior |
 |-----------|----------|
-| Missing patient data | Return most complete **verified** summary available |
-| Single tool fails | Skip it; retry once; fall back to visit history if answer can't be grounded |
+| Missing patient data | Return the most complete **verified** summary available |
+| Single tool fails | Skip it; retry once; fall back if the answer can't be grounded |
 | Verification fails | Withhold unsupported claims; fall back |
-| Clinical rule violation | Surface explicit warning; block the offending claim |
+| Clinical rule violation | Surface an explicit warning; block the offending claim |
 | Unexpected model output | Discard unless verifiable |
 | Unauthorized / cross-patient request | Deny and log; no answer |
 | Dependency down (`/ready` red) | Sidebar shows degraded state; no silent 200s |
 
-## Contracts, Endpoints & API Collection
+## Observability, Compliance & Ops
 
-- **Contracts:** Pydantic models for every tool I/O and for `/chat`
-  request/response are the canonical schema.
-- **`POST /chat`** request: `{patient_id, message, session_id}` + `Authorization`
-  bearer; response: `{answer, citations[], warnings[], degraded: bool,
-  correlation_id}` (streamed).
-- **API collection:** a Bruno/Postman collection covering `/chat` (happy path,
-  cross-patient refusal, missing-data fallback), `/health`, `/ready` — runnable
-  without reading source.
+- **Dashboards (Langfuse):** request count, error rate, p50/p95 latency, tool-call
+  counts, retry counts, verification pass/fail rate, token cost. *(No queue — the
+  request path is synchronous.)*
+- **Three alerts:** p95 latency, error rate, and tool-failure rate over threshold —
+  each with a documented on-call response.
+- **Health/ready:** `/health` = liveness; `/ready` = OpenEMR + Anthropic + Langfuse
+  reachable.
+- **PHI discipline:** minimum-necessary context to the LLM (assumed BAA); no PHI in
+  Langfuse; the HIPAA audit trail (§10) is the compliance record of record.
+- **Baselines + load:** capture CPU/memory/latency/throughput baselines; load-test
+  at 10 and 50 concurrent users, recording p50/p95/p99 + error rate.
 
-## Observability, Ops & Load
+## Evaluation
 
-- **Dashboards (Langfuse):** request count, error rate, p50/p95 latency, tool
-  call counts, retry counts, verification pass/fail rate, token cost.
-- **Three alerts:** p95 latency > threshold; error rate > threshold; tool
-  failure rate > threshold — each with a documented on-call response.
-- **Health/ready:** `/health` liveness; `/ready` checks OpenEMR + Anthropic +
-  Langfuse.
-- **Baselines + load:** capture CPU/memory/latency/throughput baselines; run
-  load tests at 10 and 50 concurrent users, recording p50/p95/p99 + error rate.
-
-## Evaluation Approach
-
-Eval cases target **boundaries** (empty record, missing meds/allergies, malformed
+Cases target **boundaries** (empty record, missing meds/allergies, malformed
 query), **invariants** (every claim cites a source; no cross-patient leakage;
-allergy-conflicting med always flagged), and **regressions**. Each case
-documents the failure mode it guards. Details + results live in the eval dataset.
+allergy-conflicting med always flagged), and **regressions**. Each documents the
+failure mode it guards. Suite + results live in the eval dataset.
+
+## Trust Boundaries (quick reference)
+
+- OpenEMR owns identity + resource-level authz; **the sidecar owns patient-level
+  scoping** (AUDIT S1).
+- The sidecar only **reads** scoped data — it forwards, never elevates.
+- Claude may summarize but never overrides source truth; **the verifier alone
+  decides** what is displayed.
+- Fallback may narrow scope but never invents content.
 
 ## Requirements Coverage (assignment)
 
-| Requirement | Where addressed |
-|-------------|-----------------|
+| Requirement | Where |
+|-------------|-------|
 | Agentic chatbot (multi-turn, tool-invoking) | Orchestrator + Session Store |
-| Verification: source attribution | Verification §7.1 |
-| Verification: domain constraints | Verification §7.2 + rule set |
-| Authorization / multi-user | Inherited OAuth2 (identity/resource) + **sidecar Patient Scope Guard** (AUDIT S1) |
-| Speed vs completeness | Summary-first + streaming; latency target |
-| HIPAA / PHI / BAA | §10 Audit Trail; minimum-necessary to LLM; no PHI in Langfuse (AUDIT C2/R3) |
+| Verification — source attribution | Verification #1 |
+| Verification — domain constraints | Verification #2 + rule set |
+| Authorization / multi-user | OAuth2 (identity/resource) + **Patient Scope Guard** (AUDIT S1) |
+| Speed vs. completeness | Summary-first + streaming; latency target |
+| HIPAA / PHI / BAA | Audit Trail §10; min-necessary to LLM; no PHI in Langfuse |
 | Failure modes / graceful degradation | Failure Modes table + Fallback |
-| Observability (order, timing, tool failures, tokens/cost) | Correlation ID + Langfuse |
+| Observability (steps, timing, tool failures, tokens/cost) | Correlation ID + Langfuse |
 | Correlation ID across boundaries | Minted at `/chat`, threaded everywhere |
 | Canonical schemas | Pydantic contracts |
-| Dashboards + 3 alerts | Observability, Ops & Load |
-| /health + /ready (meaningful) | Auth §2 + Ops |
-| API collection | Contracts, Endpoints & API Collection |
-| Baselines + load tests | Observability, Ops & Load |
-| Eval (boundaries/invariants/regression) | Evaluation Approach |
-
-## Tradeoffs
-
-- **Sidecar over in-PHP:** proper AI/eval/observability stack; one more service
-  to deploy.
-- **Inherited identity + sidecar patient-scoping:** we reuse OpenEMR's OAuth2 for
-  identity/resource authz but must add our own patient-level guard, because
-  OpenEMR enforces none (AUDIT S1) — a small custom control we fully own and test.
-- **Deterministic verifier over LLM-judge:** defensible and testable; a curated
-  rule set must be maintained and is not exhaustive.
-- **Session-scoped multi-turn over cross-session memory:** natural follow-ups,
-  every conversation bounded and verifiable.
-- **Fallback history over blank failure:** utility under partial failure.
+| Dashboards + 3 alerts | Observability, Compliance & Ops |
+| /health + /ready (meaningful) | Components 2; Ops |
+| Runnable API collection | Tools & Contracts |
+| Baselines + load tests | Observability, Compliance & Ops |
+| Eval (boundaries/invariants/regression) | Evaluation |
 
 ## MVP Build Order
 
-1. **Sidecar skeleton:** FastAPI app with `/health`, `/ready` (real dependency
-   checks), correlation-ID middleware, Langfuse wired in (PHI-redacted).
-2. **Synthetic hospice data (prerequisite):** the shipped demo data is empty and
-   2017-stale (AUDIT D1/D2), so generate current-dated synthetic patients with
-   meds, allergies, labs, vitals, problems, encounters, and **code status**
-   (`Observation` treatment-intervention-preference). Without this, nothing is
-   testable.
-3. **OpenEMR API access:** register the OAuth2 confidential client
-   (authorization_code + PKCE); implement `get_patient_summary` end-to-end first.
-4. **Patient Scope Guard:** enforce active-patient scoping in the request path and
-   every tool call (AUDIT S1) — build this *before* the full tool set so scoping is
-   never bolted on.
-5. **Tool layer:** remaining read-only tools behind Pydantic contracts; each
-   returns `source_id`s.
-6. **Orchestrator:** Anthropic SDK tool-use loop + in-memory session store;
-   `POST /chat` streaming.
-7. **Verifier v1 + audit trail:** source-attribution check; clinical rule set (start
-   with allergy cross-check, add curated interaction/dosage table); emit the HIPAA
-   audit event (§10) per request.
-8. **Fallback + failure paths:** wire the Failure Modes table.
-9. **Sidebar widget:** inject into the OpenEMR chart; pass patient + token; render
-   answer, citations, warnings, fallback label.
-10. **Eval + load:** boundary/invariant/regression suite (incl. cross-patient
-   refusal and code-status accuracy); baselines; 10 & 50-user load tests;
-   dashboards + alerts.
+1. **Sidecar skeleton** — FastAPI with `/health`, `/ready`, correlation-ID
+   middleware, Langfuse wired in (PHI-redacted).
+2. **Synthetic hospice data** *(prerequisite)* — demo data is empty/2017-stale
+   (AUDIT D1/D2); generate current-dated patients + seed **code status** (see
+   [`docker/railway/DATA_LOAD.md`](docker/railway/DATA_LOAD.md)). Nothing is
+   testable without this.
+3. **OpenEMR API access** — register the OAuth2 confidential client
+   (authorization_code + PKCE); ship `get_patient_summary` end-to-end first.
+4. **Patient Scope Guard** — enforce active-patient scoping in the request path and
+   every tool call (AUDIT S1) — *before* the full tool set, so it's never bolted on.
+5. **Tool layer** — the remaining read-only tools behind Pydantic contracts, each
+   returning `source_id`s.
+6. **Orchestrator** — Anthropic SDK tool-use loop + in-memory sessions; `POST /chat`
+   streaming.
+7. **Verifier + audit trail** — source attribution, then the clinical rule set
+   (allergy cross-check first, then interaction/dosage); emit the HIPAA audit event
+   per request.
+8. **Fallback + failure paths** — wire the Failure Modes table.
+9. **Sidebar widget** — inject into the chart; pass patient + token; render answer,
+   citations, warnings, fallback label.
+10. **Eval + load** — boundary/invariant/regression suite (incl. cross-patient
+    refusal + code-status accuracy); baselines; 10 & 50-user load; dashboards +
+    alerts.
 
-## Audit Outcomes Incorporated
+## Open Items (verify on a live instance)
 
-The Stage-3 audit ([`AUDIT.md`](AUDIT.md)) resolved this doc's prior open
-assumptions:
-
-- **OAuth2 on-behalf-of reads:** validated — authorization_code + PKCE
-  confidential client (AUDIT S5).
-- **Goals-of-care / code status:** exposed via FHIR `Observation`
-  (treatment-intervention-preference), **not** `Goal`/`Consent` (AUDIT A1/A2).
-- **Patient-level authz:** OpenEMR enforces none for clinical-user tokens → added
-  the Patient Scope Guard (AUDIT S1).
-- **`last-administered` timing:** not in the data model → descoped (AUDIT A3/D3).
-- **Sample data:** empty / 2017-stale → synthetic-data workstream added (AUDIT D1/D2).
-
-**Still to verify on a live instance:** whether
-`patient_treatment_intervention_preferences` is populated in the target dataset;
-the live US Core profile version (`GET /fhir/metadata`); and per-request read
-latency under load (AUDIT P2).
+- Is `patient_treatment_intervention_preferences` populated in the target dataset?
+  (Else run the code-status seed — build step 2.)
+- Live US Core profile version via `GET /fhir/metadata` (AUDIT A5).
+- Per-request read latency under load (AUDIT P2).
