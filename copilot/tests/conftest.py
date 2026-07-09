@@ -41,6 +41,12 @@ class FakeDependencyChecker:
 
 
 @pytest.fixture
+def anyio_backend():
+    # Pin async tests to asyncio (trio is not a dependency).
+    return "asyncio"
+
+
+@pytest.fixture
 def app():
     return create_app()
 
