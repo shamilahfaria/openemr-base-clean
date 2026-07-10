@@ -35,7 +35,6 @@ python -m loadtest.run --url http://localhost:8055 --requests 500   # -> loadtes
 - [`loadtest/RESULTS.md`](loadtest/RESULTS.md) — 0% errors at 10 & 50 concurrent
 - [`api-collection/`](api-collection/) — runnable Bruno collection
 - [`COST_ANALYSIS.md`](COST_ANALYSIS.md) — dev spend + 100/1K/10K/100K projections
-- [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) — 3–5 min demo script
 
 ## Deployment status
 
