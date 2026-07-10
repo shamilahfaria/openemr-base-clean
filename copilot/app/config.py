@@ -5,6 +5,7 @@ half-configured service.
 """
 from __future__ import annotations
 
+import os
 from typing import Mapping
 
 from pydantic import BaseModel
@@ -22,4 +23,15 @@ class Settings(BaseModel):
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     """Build Settings from ``env`` (defaults to ``os.environ``)."""
-    raise NotImplementedError
+    source = os.environ if env is None else env
+
+    missing = [key for key in ("OPENEMR_FHIR_BASE_URL", "ANTHROPIC_API_KEY") if not source.get(key)]
+    if missing:
+        raise ValueError(f"missing required settings: {', '.join(missing)}")
+
+    return Settings(
+        openemr_fhir_base_url=source["OPENEMR_FHIR_BASE_URL"],
+        anthropic_api_key=source["ANTHROPIC_API_KEY"],
+        anthropic_model=source.get("ANTHROPIC_MODEL", DEFAULT_MODEL),
+        clinical_rules_path=source.get("CLINICAL_RULES_PATH", DEFAULT_RULES_PATH),
+    )

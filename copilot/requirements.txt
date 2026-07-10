@@ -2,4 +2,5 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 httpx>=0.27
 pytest>=8
-# Added in later build steps: anthropic, langfuse, pydantic-settings
+anthropic>=0.40
+# Added in later build steps: langfuse
