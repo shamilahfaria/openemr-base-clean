@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clinical Co-Pilot</title>
+<style>
+  :root { --bg:#f6f8fa; --panel:#fff; --ink:#1f2933; --mut:#6b7683; --line:#d9e0e6;
+          --accent:#0b6e5f; --warn-bg:#fff7e6; --warn-line:#e6b45a; --deg-bg:#fdecec; --deg-line:#d9534f; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:760px; margin:0 auto; padding:16px; display:flex; flex-direction:column; height:100vh; }
+  h1 { font-size:16px; margin:0 0 2px; } .sub { color:var(--mut); font-size:12px; margin:0 0 12px; }
+  .cfg { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:12px;
+         display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .cfg label { font-size:11px; color:var(--mut); display:block; }
+  .cfg input { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; }
+  .cfg .full { grid-column:1 / -1; }
+  #log { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding:4px 0; }
+  .msg { max-width:85%; padding:10px 12px; border-radius:10px; white-space:pre-wrap; }
+  .user { align-self:flex-end; background:var(--accent); color:#fff; }
+  .bot  { align-self:flex-start; background:var(--panel); border:1px solid var(--line); }
+  .bot.degraded { background:var(--deg-bg); border-color:var(--deg-line); }
+  .badge { display:inline-block; font-size:10px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+           padding:2px 6px; border-radius:4px; margin-bottom:6px; }
+  .badge.fallback { background:var(--deg-line); color:#fff; }
+  .badge.verified { background:var(--accent); color:#fff; }
+  .cites { margin-top:8px; font-size:11px; color:var(--mut); border-top:1px dashed var(--line); padding-top:6px; }
+  .cites div { margin-top:2px; }
+  .warn { margin-top:8px; font-size:12px; background:var(--warn-bg); border:1px solid var(--warn-line);
+          border-radius:6px; padding:6px 8px; }
+  .meta { font-size:10px; color:var(--mut); margin-top:6px; }
+  form.ask { display:flex; gap:8px; padding-top:12px; }
+  form.ask input { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  form.ask button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff;
+                    font-weight:600; cursor:pointer; }
+  form.ask button:disabled { opacity:.5; }
+  .err { color:var(--deg-line); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Clinical Co-Pilot</h1>
+  <p class="sub">Read-only assistant for the open chart. Every clinical claim is verified against the record before display.</p>
+
+  <div class="cfg">
+    <div class="full"><label>OAuth2 bearer token</label><input id="token" type="password" placeholder="paste access token"></div>
+    <div><label>Patient ID (active chart)</label><input id="patient" placeholder="patient uuid"></div>
+    <div><label>Clinician ID</label><input id="clinician" placeholder="e.g. nurse-maria"></div>
+  </div>
+
+  <div id="log"></div>
+
+  <form class="ask" id="ask">
+    <input id="q" placeholder="Ask about this patient…" autocomplete="off">
+    <button id="send" type="submit">Send</button>
+  </form>
+</div>
+
+<script>
+const sessionId = "ui-" + Math.random().toString(36).slice(2);
+const log = document.getElementById("log");
+const form = document.getElementById("ask");
+const q = document.getElementById("q");
+const send = document.getElementById("send");
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text) node.textContent = text;
+  return node;
+}
+
+function addUser(text) {
+  log.appendChild(el("div", "msg user", text));
+  log.scrollTop = log.scrollHeight;
+}
+
+function addBot(body) {
+  const node = el("div", "msg bot" + (body.degraded ? " degraded" : ""));
+  node.appendChild(el("span", "badge " + (body.degraded ? "fallback" : "verified"),
+                      body.degraded ? "fallback — not a verified answer" : "verified"));
+  node.appendChild(el("div", null, body.answer || "(no answer)"));
+  (body.warnings || []).forEach(w => node.appendChild(el("div", "warn", "⚠ " + w)));
+  if ((body.citations || []).length) {
+    const c = el("div", "cites", "Sources:");
+    body.citations.forEach(x => c.appendChild(el("div", null, "• [" + x.source_id + "] " + x.claim)));
+    node.appendChild(c);
+  }
+  node.appendChild(el("div", "meta", "correlation: " + (body.correlation_id || "n/a")));
+  log.appendChild(node);
+  log.scrollTop = log.scrollHeight;
+}
+
+function addError(text) {
+  const node = el("div", "msg bot degraded");
+  node.appendChild(el("div", "err", text));
+  log.appendChild(node);
+  log.scrollTop = log.scrollHeight;
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const message = q.value.trim();
+  const token = document.getElementById("token").value.trim();
+  const patient = document.getElementById("patient").value.trim();
+  const clinician = document.getElementById("clinician").value.trim();
+  if (!message || !token || !patient || !clinician) {
+    addError("Fill in token, patient id, and clinician id first.");
+    return;
+  }
+  addUser(message);
+  q.value = ""; send.disabled = true;
+  try {
+    const response = await fetch("/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token,
+        "X-Clinician-Id": clinician,
+      },
+      body: JSON.stringify({ patient_id: patient, message: message, session_id: sessionId }),
+    });
+    if (response.status === 401) { addError("Unauthorized — check the bearer token."); return; }
+    if (response.status === 409) { addError("This session is bound to a different patient. Reload to start a new session."); return; }
+    if (response.status === 503) { addError("Service unavailable — agent and fallback are both unreachable."); return; }
+    if (!response.ok) { addError("Request failed (" + response.status + ")."); return; }
+    addBot(await response.json());
+  } catch (err) {
+    addError("Network error: " + err.message);
+  } finally {
+    send.disabled = false;
+    q.focus();
+  }
+});
+</script>
+</body>
+</html>

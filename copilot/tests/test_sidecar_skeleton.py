@@ -178,3 +178,17 @@ class TestCorrelationIdMiddleware:
         response = make_ready_client(openemr=False).get("/ready")
         assert response.status_code == 503
         assert CORRELATION_HEADER in response.headers
+
+
+class TestChatUi:
+    def test_ui_serves_the_chat_panel(self, client):
+        response = client.get("/ui")
+        assert response.status_code == 200
+        assert "Clinical Co-Pilot" in response.text
+        assert "/chat" in response.text  # the panel talks to the agent endpoint
+
+    def test_ui_collects_the_required_request_context(self, client):
+        # bearer token, patient id, clinician id — everything /chat requires
+        text = client.get("/ui").text
+        for field_id in ("token", "patient", "clinician"):
+            assert f'id="{field_id}"' in text

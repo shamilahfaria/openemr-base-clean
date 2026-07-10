@@ -1,7 +1,12 @@
 """HTTP routes for the sidecar skeleton."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Response, status
+from fastapi.responses import FileResponse
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 from .dependencies import (
     DependencyChecker,
@@ -11,6 +16,12 @@ from .dependencies import (
 )
 
 router = APIRouter()
+
+
+@router.get("/ui")
+async def ui() -> FileResponse:
+    """The chat panel (thin client for /chat)."""
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @router.get("/health")
