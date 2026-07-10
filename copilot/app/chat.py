@@ -18,13 +18,17 @@ Contract:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
-from fastapi import APIRouter, Depends, Header
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, field_validator
 
-from .audit import AuditTrail
-from .orchestrator import Orchestrator
+from .audit import AuditTrail, build_denial_event, build_turn_event
+from .middleware import get_correlation_id
+from .orchestrator import Orchestrator, TurnDraft
+from .scope import PatientScopeGuard
+from .sessions import SessionPatientMismatch
 from .verifier import Citation, Verifier
 
 router = APIRouter()
@@ -38,6 +42,13 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str
 
+    @field_validator("patient_id", "message", "session_id")
+    @classmethod
+    def _require_non_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be non-blank")
+        return value
+
 
 class ChatResponse(BaseModel):
     answer: str
@@ -49,12 +60,17 @@ class ChatResponse(BaseModel):
 
 def get_bearer_token(authorization: str = Header("")) -> str:
     """Extract the OAuth2 bearer token; 401 when missing/blank."""
-    raise NotImplementedError
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="bearer token required")
+    return token.strip()
 
 
 def get_clinician_id(x_clinician_id: str = Header("")) -> str:
     """The authenticated end-user for audit attribution; 401 when missing."""
-    raise NotImplementedError
+    if not x_clinician_id.strip():
+        raise HTTPException(status_code=401, detail="clinician identity required")
+    return x_clinician_id.strip()
 
 
 def get_orchestrator() -> Orchestrator:
@@ -83,4 +99,73 @@ async def chat(
     audit_trail: AuditTrail = Depends(get_audit_trail),
     fallback: FallbackFn = Depends(get_fallback_provider),
 ) -> ChatResponse:
-    raise NotImplementedError
+    correlation_id = get_correlation_id()
+    timestamp = datetime.now(timezone.utc)
+    guard = PatientScopeGuard(request.patient_id)
+
+    try:
+        draft = await orchestrator.run_turn(
+            patient_id=request.patient_id,
+            bearer_token=bearer_token,
+            session_id=request.session_id,
+            message=request.message,
+            scope_guard=guard,
+        )
+    except SessionPatientMismatch:
+        raise HTTPException(
+            status_code=409, detail="session is bound to a different patient"
+        )
+    except Exception:
+        # Agent unavailable (model down, tool loop, upstream error) — take the
+        # fallback path with an empty draft; details stay in server logs.
+        draft = TurnDraft(answer="", retrieved=[], tools_used=[])
+
+    result = verifier.verify(draft)
+
+    def audit(outcome_result) -> None:
+        audit_trail.record(
+            build_turn_event(
+                correlation_id=correlation_id,
+                clinician_id=clinician_id,
+                patient_id=request.patient_id,
+                timestamp=timestamp,
+                message=request.message,
+                draft=draft,
+                result=outcome_result,
+                model=getattr(orchestrator, "_model", "unknown"),
+            )
+        )
+
+    if result.passed:
+        audit(result)
+        return ChatResponse(
+            answer=result.answer,
+            citations=result.citations,
+            warnings=result.warnings,
+            degraded=False,
+            correlation_id=correlation_id,
+        )
+
+    # Verification failed (or the agent errored): safe fallback.
+    try:
+        fallback_answer = await fallback(request.patient_id, bearer_token)
+    except Exception:
+        audit_trail.record(
+            build_denial_event(
+                correlation_id=correlation_id,
+                clinician_id=clinician_id,
+                patient_id=request.patient_id,
+                timestamp=timestamp,
+                reason="agent and fallback both unavailable",
+            )
+        )
+        raise HTTPException(status_code=503, detail="service temporarily unavailable")
+
+    audit(result)
+    return ChatResponse(
+        answer=fallback_answer,
+        citations=[],
+        warnings=result.warnings,
+        degraded=True,
+        correlation_id=correlation_id,
+    )
