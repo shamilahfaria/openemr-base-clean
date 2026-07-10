@@ -89,6 +89,10 @@ def get_fallback_provider() -> FallbackFn:
     raise NotImplementedError  # production wiring; overridden in tests
 
 
+def get_telemetry_exporter():
+    raise NotImplementedError  # production wiring; overridden in tests
+
+
 @router.post("/chat")
 async def chat(
     request: ChatRequest,
