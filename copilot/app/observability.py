@@ -42,4 +42,4 @@ class LoggingExporter:
     """Structured-log backend: one INFO line per turn."""
 
     def export(self, telemetry: TurnTelemetry) -> None:
-        raise NotImplementedError
+        logger.info("turn_telemetry %s", telemetry.model_dump_json())

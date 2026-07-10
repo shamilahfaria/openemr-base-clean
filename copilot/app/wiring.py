@@ -17,6 +17,7 @@ from .audit import AuditTrail
 from .chat import FallbackFn
 from .config import load_settings
 from .fhir.client import FhirClient
+from .observability import LoggingExporter
 from .orchestrator import Orchestrator
 from .sessions import SessionStore
 from .tools import chart
@@ -140,6 +141,12 @@ def get_fallback_provider() -> FallbackFn:
     if "fallback" not in _cache:
         _cache["fallback"] = build_fallback_provider(_fhir_client())
     return _cache["fallback"]
+
+
+def get_telemetry_exporter() -> LoggingExporter:
+    if "telemetry" not in _cache:
+        _cache["telemetry"] = LoggingExporter()
+    return _cache["telemetry"]
 
 
 def reset() -> None:

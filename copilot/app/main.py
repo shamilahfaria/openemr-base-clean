@@ -18,6 +18,7 @@ def create_app() -> FastAPI:
     app.dependency_overrides[chat.get_verifier] = wiring.get_verifier
     app.dependency_overrides[chat.get_audit_trail] = wiring.get_audit_trail
     app.dependency_overrides[chat.get_fallback_provider] = wiring.get_fallback_provider
+    app.dependency_overrides[chat.get_telemetry_exporter] = wiring.get_telemetry_exporter
     return app
 
 

@@ -18,6 +18,8 @@ Contract:
 """
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
@@ -26,10 +28,13 @@ from pydantic import BaseModel, field_validator
 
 from .audit import AuditTrail, build_denial_event, build_turn_event
 from .middleware import get_correlation_id
+from .observability import TelemetryExporter, TurnTelemetry
 from .orchestrator import Orchestrator, TurnDraft
 from .scope import PatientScopeGuard
 from .sessions import SessionPatientMismatch
 from .verifier import Citation, Verifier
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -102,9 +107,11 @@ async def chat(
     verifier: Verifier = Depends(get_verifier),
     audit_trail: AuditTrail = Depends(get_audit_trail),
     fallback: FallbackFn = Depends(get_fallback_provider),
+    exporter: TelemetryExporter = Depends(get_telemetry_exporter),
 ) -> ChatResponse:
     correlation_id = get_correlation_id()
     timestamp = datetime.now(timezone.utc)
+    started = time.monotonic()
     guard = PatientScopeGuard(request.patient_id)
 
     try:
@@ -119,12 +126,35 @@ async def chat(
         raise HTTPException(
             status_code=409, detail="session is bound to a different patient"
         )
-    except Exception:
+    except Exception as exc:
         # Agent unavailable (model down, tool loop, upstream error) — take the
-        # fallback path with an empty draft; details stay in server logs.
+        # fallback path with an empty draft. Log the failure with the
+        # correlation id; never the message or token.
+        logger.error(
+            "agent turn failed correlation_id=%s error=%s",
+            correlation_id,
+            type(exc).__name__,
+        )
         draft = TurnDraft(answer="", retrieved=[], tools_used=[])
 
     result = verifier.verify(draft)
+
+    def emit(outcome: str, degraded: bool) -> None:
+        telemetry = TurnTelemetry(
+            correlation_id=correlation_id,
+            outcome=outcome,
+            degraded=degraded,
+            tools_used=list(draft.tools_used),
+            verification_passed=result.passed,
+            warnings_count=len(result.warnings),
+            withheld_count=len(result.withheld),
+            latency_ms=(time.monotonic() - started) * 1000,
+            model=getattr(orchestrator, "_model", "unknown"),
+        )
+        try:
+            exporter.export(telemetry)
+        except Exception as exc:
+            logger.warning("telemetry export failed: %s", type(exc).__name__)
 
     def audit(outcome_result) -> None:
         audit_trail.record(
@@ -142,6 +172,7 @@ async def chat(
 
     if result.passed:
         audit(result)
+        emit("verified", degraded=False)
         return ChatResponse(
             answer=result.answer,
             citations=result.citations,
@@ -163,9 +194,11 @@ async def chat(
                 reason="agent and fallback both unavailable",
             )
         )
+        emit("denied", degraded=True)
         raise HTTPException(status_code=503, detail="service temporarily unavailable")
 
     audit(result)
+    emit("fallback", degraded=True)
     return ChatResponse(
         answer=fallback_answer,
         citations=[],
