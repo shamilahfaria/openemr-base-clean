@@ -76,6 +76,14 @@ SELECT
     'AgentForge hospice seed'
 FROM (SELECT pid FROM `patient_data` ORDER BY pid DESC LIMIT 15) AS p;
 
+-- --- Back-fill uuids so the FHIR Observation carries an `id` -----------------
+-- This FHIR service does not auto-populate uuids on read, and without an `id`
+-- the resource cannot be cited by the agent's verification layer.
+UPDATE `patient_treatment_intervention_preferences`
+SET `uuid` = UNHEX(REPLACE(UUID(), '-', ''))
+WHERE (`uuid` IS NULL OR `uuid` = '')
+  AND `note` = 'AgentForge hospice seed';
+
 -- --- Verify -------------------------------------------------------------------
 --   SELECT patient_id, observation_code, value_display
 --   FROM patient_treatment_intervention_preferences

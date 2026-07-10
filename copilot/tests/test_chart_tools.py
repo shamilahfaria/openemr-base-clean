@@ -385,3 +385,22 @@ class TestGoalsOfCare:
         client = FakeFhirClient({"Observation": bundle([{"resource": sparse}])})
         (record,) = await get_goals_of_care(client, PATIENT_ID, TOKEN)
         assert record.answer is None
+
+
+class TestGoalsOfCareCodingFallback:
+    @pytest.mark.anyio
+    async def test_reads_value_and_question_from_coding_when_text_absent(self):
+        # Real OpenEMR FHIR puts the value under coding[].display, not .text.
+        resource = {
+            "resourceType": "Observation",
+            "id": "goc-9",
+            "code": {"coding": [{"code": "75773-2", "display": "Goals for medical treatment"}]},
+            "valueCodeableConcept": {
+                "coding": [{"code": "385644000", "display": "Prefers limited resuscitation"}]
+            },
+        }
+        client = FakeFhirClient({"Observation": bundle([{"resource": resource}])})
+        (record,) = await get_goals_of_care(client, PATIENT_ID, TOKEN)
+        assert record.source_id == "goc-9"
+        assert record.question == "Goals for medical treatment"
+        assert record.answer == "Prefers limited resuscitation"

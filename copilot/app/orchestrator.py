@@ -30,6 +30,19 @@ from .sessions import SessionStore
 
 MAX_TOOL_ITERATIONS = 10
 
+# Descriptions help the model pick the right tool (esp. code status / goals of care).
+TOOL_DESCRIPTIONS = {
+    "get_patient_summary": "Demographics, active problems, and recent context — cheap orientation.",
+    "get_recent_encounters": "Recent visits / encounters, most recent first.",
+    "search_notes": "Search clinical notes for a term; returns matching excerpts.",
+    "get_medications": "Ordered medications with PRN flag and interval (orders only).",
+    "get_allergies": "Documented allergies and reactions.",
+    "get_labs": "Recent lab results with values and dates.",
+    "get_vitals": "Recent vital signs.",
+    "get_problem_list": "Active and historical problems.",
+    "get_goals_of_care": "Code status and goals of care (e.g. DNR / full code / comfort measures).",
+}
+
 # A tool receives the model-proposed arguments plus the caller's bearer token
 # and returns the retrieved records.
 ToolFn = Callable[[dict, str], Awaitable[list]]
@@ -61,20 +74,50 @@ class Orchestrator:
         self._model = model
 
     def _tool_specs(self) -> list[dict]:
-        # Minimal schemas for now; the Pydantic contracts become full
-        # input_schema definitions when the real registry is wired.
-        return [
-            {"name": name, "description": name, "input_schema": {"type": "object"}}
-            for name in self._tools
-        ]
+        specs = []
+        for name in self._tools:
+            properties = {
+                "patient_id": {
+                    "type": "string",
+                    "description": "The active patient's id. Required.",
+                }
+            }
+            required = ["patient_id"]
+            if name == "search_notes":
+                properties["query"] = {
+                    "type": "string",
+                    "description": "Case-insensitive term to match against note text.",
+                }
+                required.append("query")
+            specs.append(
+                {
+                    "name": name,
+                    "description": TOOL_DESCRIPTIONS.get(name, name),
+                    "input_schema": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                    },
+                }
+            )
+        return specs
 
     def _system_prompt(self, patient_id: str) -> str:
         return (
-            "You are a read-only clinical co-pilot embedded in OpenEMR, "
-            "assisting a hospice nurse with the currently open chart. "
-            f"The active patient id is {patient_id}. Only use the provided "
-            "tools, only for this patient, and only state what the retrieved "
-            "records support."
+            "You are a read-only clinical co-pilot embedded in OpenEMR, assisting "
+            f"a hospice nurse with the open chart for patient {patient_id}. Use the "
+            "provided tools to retrieve this patient's data; always pass "
+            f"patient_id={patient_id} and never any other patient id.\n\n"
+            "CITATION PROTOCOL (required — the verification layer enforces it):\n"
+            "- Every sentence must end with a marker.\n"
+            "- For a statement drawn from a retrieved record, append "
+            "[src: <source_id>] using the exact source_id field of the record it "
+            "came from. Cite every record the sentence relies on.\n"
+            "- For general medical knowledge NOT from this patient's record, append "
+            "[general].\n"
+            "- Never state a patient-specific fact without a [src: ...] marker. If no "
+            "retrieved record supports a statement, do not make it.\n\n"
+            "Keep answers concise and scannable for a nurse between rooms."
         )
 
     async def _execute_tool(

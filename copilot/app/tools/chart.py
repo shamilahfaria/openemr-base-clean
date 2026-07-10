@@ -232,16 +232,23 @@ async def get_goals_of_care(
         client, "Observation", patient_id, bearer_token,
         {"category": GOALS_OF_CARE_CATEGORY},
     )
+    def codeable_text(concept: dict | None) -> str | None:
+        concept = concept or {}
+        if concept.get("text"):
+            return concept["text"]
+        codings = concept.get("coding") or []
+        return codings[0].get("display") if codings else None
+
     records = []
     for resource in resources:
         code = resource.get("code") or {}
         codings = code.get("coding") or []
         records.append(
             GoalsOfCareRecord(
-                source_id=resource["id"],
+                source_id=resource.get("id", ""),
                 code=codings[0].get("code", "") if codings else "",
-                question=code.get("text", ""),
-                answer=(resource.get("valueCodeableConcept") or {}).get("text"),
+                question=codeable_text(code) or "",
+                answer=codeable_text(resource.get("valueCodeableConcept")),
                 effective=resource.get("effectiveDateTime"),
             )
         )
