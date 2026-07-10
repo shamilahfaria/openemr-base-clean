@@ -20,11 +20,12 @@ Rules the tests pin:
 """
 from __future__ import annotations
 
+import json
 from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel
 
-from .scope import PatientScopeGuard
+from .scope import PatientScopeGuard, ScopeViolation
 from .sessions import SessionStore
 
 MAX_TOOL_ITERATIONS = 10
@@ -54,7 +55,66 @@ class Orchestrator:
         session_store: SessionStore,
         model: str = "claude-sonnet-4-5",
     ):
-        raise NotImplementedError
+        self._client = anthropic_client
+        self._tools = tool_registry
+        self._sessions = session_store
+        self._model = model
+
+    def _tool_specs(self) -> list[dict]:
+        # Minimal schemas for now; the Pydantic contracts become full
+        # input_schema definitions when the real registry is wired.
+        return [
+            {"name": name, "description": name, "input_schema": {"type": "object"}}
+            for name in self._tools
+        ]
+
+    def _system_prompt(self, patient_id: str) -> str:
+        return (
+            "You are a read-only clinical co-pilot embedded in OpenEMR, "
+            "assisting a hospice nurse with the currently open chart. "
+            f"The active patient id is {patient_id}. Only use the provided "
+            "tools, only for this patient, and only state what the retrieved "
+            "records support."
+        )
+
+    async def _execute_tool(
+        self,
+        block: Any,
+        bearer_token: str,
+        scope_guard: PatientScopeGuard,
+        tools_used: list,
+        retrieved: list,
+    ) -> dict:
+        def error(reason: str) -> dict:
+            return {
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": reason,
+                "is_error": True,
+            }
+
+        try:
+            scope_guard.validate_tool_call(block.name, block.input)
+        except ScopeViolation:
+            return error("tool call denied: out of patient scope")
+
+        tool = self._tools.get(block.name)
+        if tool is None:
+            return error(f"unknown tool: {block.name}")
+
+        try:
+            records = await tool(block.input, bearer_token)
+        except Exception:
+            # The model gets a generic failure; details stay in server logs.
+            return error(f"tool failed: {block.name}")
+
+        tools_used.append(block.name)
+        retrieved.extend(records)
+        content = json.dumps(
+            [r.model_dump() if hasattr(r, "model_dump") else r for r in records],
+            default=str,
+        )
+        return {"type": "tool_result", "tool_use_id": block.id, "content": content}
 
     async def run_turn(
         self,
@@ -65,4 +125,48 @@ class Orchestrator:
         message: str,
         scope_guard: PatientScopeGuard,
     ) -> TurnDraft:
-        raise NotImplementedError
+        if not message.strip():
+            raise ValueError("message is required")
+        if not bearer_token.strip():
+            raise ValueError("bearer token is required")
+
+        messages = self._sessions.history(session_id, patient_id)
+        messages.append({"role": "user", "content": message})
+
+        tools_used: list[str] = []
+        retrieved: list[Any] = []
+
+        for _ in range(MAX_TOOL_ITERATIONS):
+            response = await self._client.messages.create(
+                model=self._model,
+                max_tokens=1024,
+                system=self._system_prompt(patient_id),
+                messages=messages,
+                tools=self._tool_specs(),
+            )
+
+            if response.stop_reason != "tool_use":
+                answer = "".join(
+                    block.text for block in response.content if block.type == "text"
+                )
+                # Only a completed turn is recorded — failed turns never
+                # pollute the session.
+                self._sessions.append(session_id, patient_id, "user", message)
+                self._sessions.append(session_id, patient_id, "assistant", answer)
+                return TurnDraft(
+                    answer=answer, retrieved=retrieved, tools_used=tools_used
+                )
+
+            results = [
+                await self._execute_tool(
+                    block, bearer_token, scope_guard, tools_used, retrieved
+                )
+                for block in response.content
+                if block.type == "tool_use"
+            ]
+            messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "user", "content": results})
+
+        raise ToolLoopLimitError(
+            f"model exceeded {MAX_TOOL_ITERATIONS} tool iterations"
+        )
