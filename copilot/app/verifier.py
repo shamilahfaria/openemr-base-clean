@@ -27,6 +27,10 @@ import re
 from pydantic import BaseModel
 
 from .orchestrator import TurnDraft
+from .tools.chart import AllergyRecord, MedicationRecord
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_DOSE_MG_RE = re.compile(r"(\d+(?:\.\d+)?)\s*mg\b", re.IGNORECASE)
 
 CITATION_RE = re.compile(r"\[src:\s*([^\]]+?)\s*\]")
 GENERAL_MARKER = "[general]"
@@ -68,9 +72,110 @@ class VerificationResult(BaseModel):
         return bool(self.answer.strip())
 
 
+def _clean(sentence: str) -> str:
+    """Strip markers and tidy the whitespace they leave behind."""
+    text = CITATION_RE.sub("", sentence)
+    text = text.replace(GENERAL_MARKER, "")
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"\s+([.!?,;:])", r"\1", text)
+    return text.strip()
+
+
 class Verifier:
     def __init__(self, rules: ClinicalRuleSet):
-        raise NotImplementedError
+        self._rules = rules
 
     def verify(self, draft: TurnDraft) -> VerificationResult:
-        raise NotImplementedError
+        valid_ids = {
+            record.source_id
+            for record in draft.retrieved
+            if hasattr(record, "source_id")
+        }
+
+        kept: list[str] = []
+        citations: list[Citation] = []
+        withheld: list[str] = []
+        warnings: list[str] = []
+
+        sentences = [s for s in _SENTENCE_SPLIT_RE.split(draft.answer) if s.strip()]
+        for sentence in sentences:
+            cited_ids = CITATION_RE.findall(sentence)
+            claim = _clean(sentence)
+
+            if cited_ids:
+                if all(cid in valid_ids for cid in cited_ids):
+                    kept.append(claim)
+                    citations.extend(
+                        Citation(claim=claim, source_id=cid) for cid in cited_ids
+                    )
+                else:
+                    # Unknown source — the claim cannot be attributed. Block it.
+                    withheld.append(claim)
+            elif GENERAL_MARKER in sentence:
+                # Outside-record content is allowed but must be labeled.
+                labeled = _clean(sentence)
+                if labeled.endswith((".", "!", "?")):
+                    labeled = f"{labeled[:-1]} {OUTSIDE_RECORD_LABEL}{labeled[-1]}"
+                else:
+                    labeled = f"{labeled} {OUTSIDE_RECORD_LABEL}"
+                kept.append(labeled)
+            else:
+                # Uncited clinical content: prefer silence over invention.
+                withheld.append(claim)
+
+        if withheld:
+            warnings.append(
+                f"{len(withheld)} statement(s) were withheld because they could "
+                "not be verified against the patient record."
+            )
+
+        warnings.extend(self._clinical_warnings(draft.retrieved))
+
+        return VerificationResult(
+            answer=" ".join(kept),
+            citations=citations,
+            warnings=warnings,
+            withheld=withheld,
+            rules_version=self._rules.version,
+        )
+
+    def _clinical_warnings(self, retrieved: list) -> list[str]:
+        meds = [r for r in retrieved if isinstance(r, MedicationRecord)]
+        allergies = [r for r in retrieved if isinstance(r, AllergyRecord)]
+        warnings: list[str] = []
+
+        # 1. Allergy cross-check: the patient's own allergy list vs their meds.
+        for med in meds:
+            med_name = med.name.casefold()
+            for allergy in allergies:
+                substance = allergy.substance.casefold()
+                if substance in med_name or med_name in substance:
+                    warnings.append(
+                        f"Allergy conflict: {med.name} matches documented "
+                        f"allergy '{allergy.substance}'."
+                    )
+
+        # 2. Curated interaction pairs.
+        med_names = [m.name.casefold() for m in meds]
+        for rule in self._rules.interactions:
+            if any(rule.drug_a.casefold() in name for name in med_names) and any(
+                rule.drug_b.casefold() in name for name in med_names
+            ):
+                warnings.append(
+                    f"Interaction: {rule.drug_a} + {rule.drug_b} — {rule.note}."
+                )
+
+        # 3. Dose thresholds. Unparseable doses yield no warning (known limit).
+        for med in meds:
+            med_name = med.name.casefold()
+            for rule in self._rules.dose_limits:
+                if rule.drug.casefold() not in med_name or not med.dose:
+                    continue
+                match = _DOSE_MG_RE.search(med.dose)
+                if match and float(match.group(1)) > rule.max_single_dose_mg:
+                    warnings.append(
+                        f"Dose alert: {med.name} {med.dose} exceeds the "
+                        f"{rule.max_single_dose_mg} mg single-dose threshold."
+                    )
+
+        return warnings
