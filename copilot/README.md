@@ -24,7 +24,7 @@ uvicorn app.main:app --port 8055
 ## Tests & evals
 
 ```bash
-pytest                 # 241 tests, ~1s (strict TDD, LLM faked)
+pytest                 # 242 tests, ~1s (strict TDD, LLM faked)
 python -m evals.run    # 16/16 boundary/invariant/regression evals -> evals/RESULTS.md
 python -m loadtest.run --url http://localhost:8055 --requests 500   # -> loadtest/RESULTS.md
 ```
@@ -36,13 +36,11 @@ python -m loadtest.run --url http://localhost:8055 --requests 500   # -> loadtes
 - [`api-collection/`](api-collection/) — runnable Bruno collection
 - [`COST_ANALYSIS.md`](COST_ANALYSIS.md) — dev spend + 100/1K/10K/100K projections
 
-## Deployment status
+## Deployed (Railway, `early-sub` environment)
 
-- **OpenEMR base:** live — https://openemr-production-96cd.up.railway.app
-- **Sidecar:** Railway service `copilot` is provisioned but its build source is
-  misconfigured (currently building the OpenEMR image instead of this
-  `copilot/Dockerfile`). Fix: in the Railway `copilot` service settings, set the
-  source to this repo with **root directory = `copilot/`** (or disconnect the
-  GitHub source and redeploy via `railway up` from `copilot/`). The image itself
-  is correct and the service runs cleanly locally and in Docker
-  (`docker build -t copilot . && docker run -p 8080:8080 -e OPENEMR_FHIR_BASE_URL=... -e ANTHROPIC_API_KEY=... copilot`).
+- **Agent:** https://copilot-early-sub.up.railway.app (`/ui`, `/health`, `/ready`, `/chat`)
+- **OpenEMR:** https://openemr-early-sub.up.railway.app
+
+Live and doing verified, source-cited turns end-to-end. Deploy with
+`cd copilot && railway up --service copilot` (builds `copilot/Dockerfile` via
+`copilot/railway.json`).
