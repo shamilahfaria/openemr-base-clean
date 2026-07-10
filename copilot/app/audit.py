@@ -19,13 +19,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from .orchestrator import TurnDraft
 from .verifier import VerificationResult
 
 
 class AuditEvent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     correlation_id: str
     clinician_id: str           # the authenticated end-user (AUDIT C2)
     patient_id: str
@@ -39,18 +41,25 @@ class AuditEvent(BaseModel):
     withheld_count: int
     reason: str | None          # populated for denials
 
+    @field_validator("correlation_id", "clinician_id", "patient_id")
+    @classmethod
+    def _require_non_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("audit attribution ids must be non-blank")
+        return value
+
 
 class AuditTrail:
     """Append-only, in-memory for MVP (swap for WORM/SIEM at scale)."""
 
     def __init__(self):
-        raise NotImplementedError
+        self._events: list[AuditEvent] = []
 
     def record(self, event: AuditEvent) -> None:
-        raise NotImplementedError
+        self._events.append(event)
 
     def events(self) -> list[AuditEvent]:
-        raise NotImplementedError
+        return list(self._events)
 
 
 def build_turn_event(
@@ -65,7 +74,23 @@ def build_turn_event(
     model: str,
 ) -> AuditEvent:
     """Audit event for a completed turn (verified or fallback)."""
-    raise NotImplementedError
+    manifest = sorted(
+        {r.source_id for r in draft.retrieved if hasattr(r, "source_id")}
+    )
+    return AuditEvent(
+        correlation_id=correlation_id,
+        clinician_id=clinician_id,
+        patient_id=patient_id,
+        timestamp=timestamp,
+        message=message,
+        tools_used=list(draft.tools_used),
+        phi_manifest=manifest,
+        model=model,
+        outcome="verified" if result.passed else "fallback",
+        warnings_count=len(result.warnings),
+        withheld_count=len(result.withheld),
+        reason=None,
+    )
 
 
 def build_denial_event(
@@ -77,4 +102,17 @@ def build_denial_event(
     reason: str,
 ) -> AuditEvent:
     """Audit event for a fail-closed denial (scope violation, auth failure)."""
-    raise NotImplementedError
+    return AuditEvent(
+        correlation_id=correlation_id,
+        clinician_id=clinician_id,
+        patient_id=patient_id,
+        timestamp=timestamp,
+        message=None,
+        tools_used=[],
+        phi_manifest=[],
+        model="",
+        outcome="denied",
+        warnings_count=0,
+        withheld_count=0,
+        reason=reason,
+    )
