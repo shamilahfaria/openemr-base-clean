@@ -1,0 +1,37 @@
+{
+  "version": "2026.07.0",
+  "interactions": [
+    {
+      "drug_a": "morphine",
+      "drug_b": "lorazepam",
+      "note": "additive CNS and respiratory depression — monitor sedation level and respiratory rate"
+    },
+    {
+      "drug_a": "morphine",
+      "drug_b": "midazolam",
+      "note": "additive CNS and respiratory depression — monitor sedation level and respiratory rate"
+    },
+    {
+      "drug_a": "oxycodone",
+      "drug_b": "lorazepam",
+      "note": "additive CNS and respiratory depression — monitor sedation level and respiratory rate"
+    },
+    {
+      "drug_a": "fentanyl",
+      "drug_b": "midazolam",
+      "note": "additive CNS and respiratory depression — monitor sedation level and respiratory rate"
+    },
+    {
+      "drug_a": "haloperidol",
+      "drug_b": "methadone",
+      "note": "additive QT prolongation risk — review ECG history and cumulative QT burden"
+    }
+  ],
+  "dose_limits": [
+    { "drug": "morphine", "max_single_dose_mg": 30.0 },
+    { "drug": "oxycodone", "max_single_dose_mg": 30.0 },
+    { "drug": "hydromorphone", "max_single_dose_mg": 8.0 },
+    { "drug": "lorazepam", "max_single_dose_mg": 4.0 },
+    { "drug": "haloperidol", "max_single_dose_mg": 5.0 }
+  ]
+}
