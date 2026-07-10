@@ -1,0 +1,13 @@
+meta {
+  name: 2 Ready
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/ready
+}
+
+docs {
+  200 when OpenEMR + Anthropic + Langfuse are all reachable; 503 otherwise.
+}

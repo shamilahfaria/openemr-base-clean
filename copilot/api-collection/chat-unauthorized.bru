@@ -1,0 +1,26 @@
+meta {
+  name: 4 Chat - 401 no token
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/chat
+  body: json
+}
+
+headers {
+  X-Clinician-Id: {{clinician}}
+}
+
+body:json {
+  {
+    "patient_id": "{{patient}}",
+    "message": "hi",
+    "session_id": "demo-1"
+  }
+}
+
+assert {
+  res.status: eq 401
+}
