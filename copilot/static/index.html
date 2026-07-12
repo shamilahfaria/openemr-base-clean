@@ -5,56 +5,118 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clinical Co-Pilot</title>
 <style>
-  :root { --bg:#f6f8fa; --panel:#fff; --ink:#1f2933; --mut:#6b7683; --line:#d9e0e6;
-          --accent:#0b6e5f; --warn-bg:#fff7e6; --warn-line:#e6b45a; --deg-bg:#fdecec; --deg-line:#d9534f; }
+  :root {
+    --paper:#f7f5f0; --panel:#fffdf9; --ink:#1c2733; --muted:#5f6b76;
+    --line:#e2ddd2; --navy:#1f3a5f; --navy-soft:#eef2f7; --amber:#9a6200;
+    --amber-bg:#fdf6e7; --ok:#1a7f4e; --ok-bg:#eef7f1; --bad:#b3261e; --bad-bg:#faeeed;
+  }
   * { box-sizing:border-box; }
-  body { margin:0; font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
-  .wrap { max-width:760px; margin:0 auto; padding:16px; display:flex; flex-direction:column; height:100vh; }
-  h1 { font-size:16px; margin:0 0 2px; } .sub { color:var(--mut); font-size:12px; margin:0 0 12px; }
-  .cfg { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:12px;
-         display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .cfg label { font-size:11px; color:var(--mut); display:block; }
-  .cfg input { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px; }
-  .cfg .full { grid-column:1 / -1; }
-  #log { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding:4px 0; }
-  .msg { max-width:85%; padding:10px 12px; border-radius:10px; white-space:pre-wrap; }
-  .user { align-self:flex-end; background:var(--accent); color:#fff; }
-  .bot  { align-self:flex-start; background:var(--panel); border:1px solid var(--line); }
-  .bot.degraded { background:var(--deg-bg); border-color:var(--deg-line); }
-  .badge { display:inline-block; font-size:10px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
-           padding:2px 6px; border-radius:4px; margin-bottom:6px; }
-  .badge.fallback { background:var(--deg-line); color:#fff; }
-  .badge.verified { background:var(--accent); color:#fff; }
-  .cites { margin-top:8px; font-size:11px; color:var(--mut); border-top:1px dashed var(--line); padding-top:6px; }
-  .cites div { margin-top:2px; }
-  .warn { margin-top:8px; font-size:12px; background:var(--warn-bg); border:1px solid var(--warn-line);
-          border-radius:6px; padding:6px 8px; }
-  .meta { font-size:10px; color:var(--mut); margin-top:6px; }
-  form.ask { display:flex; gap:8px; padding-top:12px; }
-  form.ask input { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
-  form.ask button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff;
-                    font-weight:600; cursor:pointer; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .wrap { max-width:820px; margin:0 auto; padding:18px 16px 14px; height:100%;
+          display:flex; flex-direction:column; }
+
+  header { border-bottom:3px double var(--navy); padding-bottom:10px; }
+  .masthead { display:flex; justify-content:space-between; align-items:baseline; }
+  h1 { font:600 21px Georgia,'Times New Roman',serif; color:var(--navy); margin:0; }
+  .tagline { color:var(--muted); font-size:12px; margin:2px 0 0; }
+  .masthead a { font-size:12px; color:var(--navy); }
+
+  details.conn { margin:12px 0 0; background:var(--panel); border:1px solid var(--line);
+                 border-radius:8px; }
+  details.conn summary { cursor:pointer; padding:9px 12px; font-size:12px; color:var(--muted);
+                         display:flex; align-items:center; gap:8px; list-style:none; }
+  details.conn summary::-webkit-details-marker { display:none; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--bad); flex:none; }
+  .dot.on { background:var(--ok); }
+  .conn-body { padding:0 12px 12px; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .conn-body label { font-size:11px; color:var(--muted); display:block; }
+  .conn-body input { width:100%; padding:6px 8px; border:1px solid var(--line);
+                     border-radius:6px; font-size:12px; background:#fff; }
+  .conn-body .full { grid-column:1 / -1; }
+  .conn-note { grid-column:1 / -1; font-size:11px; color:var(--muted); }
+
+  #log { flex:1; overflow-y:auto; padding:14px 2px; display:flex; flex-direction:column; gap:12px; }
+
+  .turn-q { align-self:flex-end; max-width:80%; background:var(--navy); color:#fdfcf9;
+            padding:9px 13px; border-radius:12px 12px 3px 12px; white-space:pre-wrap; }
+
+  .card { align-self:stretch; background:var(--panel); border:1px solid var(--line);
+          border-left:4px solid var(--ok); border-radius:8px; overflow:hidden; }
+  .card.degraded { border-left-color:var(--bad); }
+  .card-status { display:flex; align-items:center; gap:8px; font-size:11px; font-weight:600;
+                 letter-spacing:.05em; text-transform:uppercase; padding:6px 12px; }
+  .card-status.verified { color:var(--ok); background:var(--ok-bg); }
+  .card-status.fallback { color:var(--bad); background:var(--bad-bg); }
+  .card-status .lat { margin-left:auto; font-weight:400; text-transform:none;
+                      letter-spacing:0; color:var(--muted); }
+  .card-body { padding:10px 12px; white-space:pre-wrap; }
+  .flag { margin:0 12px 10px; padding:7px 10px; font-size:12px; background:var(--amber-bg);
+          border:1px solid var(--amber); border-radius:6px; color:var(--ink); }
+  .flag b { color:var(--amber); }
+  .sources { border-top:1px dashed var(--line); margin:0 12px; padding:8px 0 10px; }
+  .sources summary { cursor:pointer; font-size:11px; color:var(--muted);
+                     text-transform:uppercase; letter-spacing:.06em; }
+  .sources div { font-size:12px; color:var(--muted); margin-top:4px; padding-left:8px; }
+  .sources code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px;
+                  color:var(--navy); }
+  .card-meta { font-size:10px; color:var(--muted); padding:0 12px 8px;
+               font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .card.error .card-body { color:var(--bad); }
+
+  .chips { display:flex; gap:6px; flex-wrap:wrap; padding:4px 0 10px; }
+  .chips button { border:1px solid var(--line); background:var(--panel); color:var(--navy);
+                  border-radius:14px; padding:4px 11px; font-size:12px; cursor:pointer; }
+  .chips button:hover { background:var(--navy-soft); }
+
+  form.ask { display:flex; gap:8px; border-top:1px solid var(--line); padding-top:12px; }
+  form.ask input { flex:1; padding:10px 13px; border:1px solid var(--line); border-radius:8px;
+                   font-size:14px; background:#fff; }
+  form.ask button { padding:10px 18px; border:0; border-radius:8px; background:var(--navy);
+                    color:#fdfcf9; font-weight:600; cursor:pointer; }
   form.ask button:disabled { opacity:.5; }
-  .err { color:var(--deg-line); font-size:12px; }
+  .foot { font-size:10px; color:var(--muted); text-align:center; padding-top:6px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Clinical Co-Pilot</h1>
-  <p class="sub">Read-only assistant for the open chart. Every clinical claim is verified against the record before display.</p>
-
-  <div class="cfg">
-    <div class="full"><label>OAuth2 bearer token</label><input id="token" type="password" placeholder="paste access token"></div>
-    <div><label>Patient ID (active chart)</label><input id="patient" placeholder="patient uuid"></div>
-    <div><label>Clinician ID</label><input id="clinician" placeholder="e.g. nurse-maria"></div>
-  </div>
+  <header>
+    <div class="masthead">
+      <div>
+        <h1>Clinical Co-Pilot</h1>
+        <p class="tagline">Shift companion for the open chart — reads only, cites everything.</p>
+      </div>
+      <a href="/dashboard" target="_blank">observability ↗</a>
+    </div>
+    <details class="conn" id="conn">
+      <summary><span class="dot" id="dot"></span><span id="connlabel">Connect to the chart session</span></summary>
+      <div class="conn-body">
+        <div class="full"><label>OAuth2 bearer token (kept in this browser only)</label>
+          <input id="token" type="password" placeholder="paste access token" autocomplete="off"></div>
+        <div><label>Patient ID (active chart)</label><input id="patient" placeholder="patient uuid"></div>
+        <div><label>Clinician ID</label><input id="clinician" placeholder="e.g. nurse-maria"></div>
+        <div class="conn-note">Stored in localStorage for this browser. <code>?patient=…&amp;clinician=…</code>
+          URL params are honored; the token never goes in a URL.</div>
+      </div>
+    </details>
+  </header>
 
   <div id="log"></div>
 
+  <div class="chips" id="chips">
+    <button type="button">What changed since last shift?</button>
+    <button type="button">Current comfort meds and PRN status</button>
+    <button type="button">Code status and goals of care</button>
+    <button type="button">Any allergies or interaction risks?</button>
+  </div>
+
   <form class="ask" id="ask">
     <input id="q" placeholder="Ask about this patient…" autocomplete="off">
-    <button id="send" type="submit">Send</button>
+    <button id="send" type="submit">Ask</button>
   </form>
+  <p class="foot">Every clinical claim is verified against the record before display; unverifiable
+     statements are withheld. Fallback answers are labeled and never presented as verified.</p>
 </div>
 
 <script>
@@ -63,69 +125,117 @@ const log = document.getElementById("log");
 const form = document.getElementById("ask");
 const q = document.getElementById("q");
 const send = document.getElementById("send");
+const conn = document.getElementById("conn");
+const fields = { token: document.getElementById("token"),
+                 patient: document.getElementById("patient"),
+                 clinician: document.getElementById("clinician") };
+
+// --- connection persistence: localStorage + non-sensitive URL params ---
+const params = new URLSearchParams(location.search);
+for (const key of Object.keys(fields)) {
+  const fromUrl = key !== "token" ? params.get(key) : null;
+  fields[key].value = fromUrl || localStorage.getItem("ccp." + key) || "";
+  fields[key].addEventListener("input", () => {
+    localStorage.setItem("ccp." + key, fields[key].value.trim());
+    refreshDot();
+  });
+}
+function connected() {
+  return Object.values(fields).every(f => f.value.trim());
+}
+function refreshDot() {
+  document.getElementById("dot").className = "dot" + (connected() ? " on" : "");
+  document.getElementById("connlabel").textContent = connected()
+    ? "Connected — patient " + fields.patient.value.trim().slice(0, 8) + "… as " + fields.clinician.value.trim()
+    : "Connect to the chart session";
+}
+refreshDot();
+if (!connected()) conn.open = true;
 
 function el(tag, cls, text) {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
-  if (text) node.textContent = text;
+  if (text !== undefined) node.textContent = text;
   return node;
 }
 
-function addUser(text) {
-  log.appendChild(el("div", "msg user", text));
+function addQuestion(text) {
+  log.appendChild(el("div", "turn-q", text));
   log.scrollTop = log.scrollHeight;
 }
 
-function addBot(body) {
-  const node = el("div", "msg bot" + (body.degraded ? " degraded" : ""));
-  node.appendChild(el("span", "badge " + (body.degraded ? "fallback" : "verified"),
-                      body.degraded ? "fallback — not a verified answer" : "verified"));
-  node.appendChild(el("div", null, body.answer || "(no answer)"));
-  (body.warnings || []).forEach(w => node.appendChild(el("div", "warn", "⚠ " + w)));
+function addCard(body, latencyMs) {
+  const card = el("div", "card" + (body.degraded ? " degraded" : ""));
+
+  const status = el("div", "card-status " + (body.degraded ? "fallback" : "verified"));
+  status.appendChild(el("span", null, body.degraded
+    ? "✕ Fallback — not a verified answer" : "✓ Verified against the record"));
+  status.appendChild(el("span", "lat", (latencyMs / 1000).toFixed(1) + "s"));
+  card.appendChild(status);
+
+  card.appendChild(el("div", "card-body", body.answer || "(no answer)"));
+
+  (body.warnings || []).forEach(w => {
+    const flag = el("div", "flag");
+    flag.appendChild(el("b", null, "Clinical flag: "));
+    flag.appendChild(document.createTextNode(w));
+    card.appendChild(flag);
+  });
+
   if ((body.citations || []).length) {
-    const c = el("div", "cites", "Sources:");
-    body.citations.forEach(x => c.appendChild(el("div", null, "• [" + x.source_id + "] " + x.claim)));
-    node.appendChild(c);
+    const details = document.createElement("details");
+    details.className = "sources";
+    const summary = el("summary", null, "Sources (" + body.citations.length + ")");
+    details.appendChild(summary);
+    body.citations.forEach(c => {
+      const row = el("div");
+      const code = el("code", null, "[" + c.source_id + "]");
+      row.appendChild(code);
+      row.appendChild(document.createTextNode(" " + c.claim));
+      details.appendChild(row);
+    });
+    card.appendChild(details);
   }
-  node.appendChild(el("div", "meta", "correlation: " + (body.correlation_id || "n/a")));
-  log.appendChild(node);
+
+  card.appendChild(el("div", "card-meta", "correlation " + (body.correlation_id || "n/a")));
+  log.appendChild(card);
   log.scrollTop = log.scrollHeight;
 }
 
 function addError(text) {
-  const node = el("div", "msg bot degraded");
-  node.appendChild(el("div", "err", text));
-  log.appendChild(node);
+  const card = el("div", "card degraded error");
+  card.appendChild(el("div", "card-body", text));
+  log.appendChild(card);
   log.scrollTop = log.scrollHeight;
 }
+
+document.getElementById("chips").addEventListener("click", (e) => {
+  if (e.target.tagName === "BUTTON") { q.value = e.target.textContent; form.requestSubmit(); }
+});
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = q.value.trim();
-  const token = document.getElementById("token").value.trim();
-  const patient = document.getElementById("patient").value.trim();
-  const clinician = document.getElementById("clinician").value.trim();
-  if (!message || !token || !patient || !clinician) {
-    addError("Fill in token, patient id, and clinician id first.");
-    return;
-  }
-  addUser(message);
+  if (!message) return;
+  if (!connected()) { conn.open = true; addError("Connect first: token, patient id, and clinician id."); return; }
+  addQuestion(message);
   q.value = ""; send.disabled = true;
+  const started = performance.now();
   try {
     const response = await fetch("/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + token,
-        "X-Clinician-Id": clinician,
+        "Authorization": "Bearer " + fields.token.value.trim(),
+        "X-Clinician-Id": fields.clinician.value.trim(),
       },
-      body: JSON.stringify({ patient_id: patient, message: message, session_id: sessionId }),
+      body: JSON.stringify({ patient_id: fields.patient.value.trim(), message, session_id: sessionId }),
     });
-    if (response.status === 401) { addError("Unauthorized — check the bearer token."); return; }
+    if (response.status === 401) { addError("Unauthorized — the bearer token is missing or expired. Paste a fresh one in the connection panel."); return; }
     if (response.status === 409) { addError("This session is bound to a different patient. Reload to start a new session."); return; }
     if (response.status === 503) { addError("Service unavailable — agent and fallback are both unreachable."); return; }
     if (!response.ok) { addError("Request failed (" + response.status + ")."); return; }
-    addBot(await response.json());
+    addCard(await response.json(), performance.now() - started);
   } catch (err) {
     addError("Network error: " + err.message);
   } finally {
