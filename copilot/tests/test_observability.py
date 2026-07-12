@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from app import chat, wiring
 from app.audit import AuditTrail
 from app.main import create_app
-from app.observability import LoggingExporter, TurnTelemetry
+from app.observability import CompositeExporter, LoggingExporter, TurnTelemetry
 from app.orchestrator import TurnDraft
 from app.tools.chart import MedicationRecord
 from app.verifier import ClinicalRuleSet, Verifier
@@ -210,9 +210,13 @@ class TestWiringBinding:
             is wiring.get_telemetry_exporter
         )
 
-    def test_wiring_provides_a_logging_exporter_singleton(self):
+    def test_wiring_provides_a_composite_exporter_singleton(self):
+        # Every turn reaches BOTH the structured log and the /metrics registry.
         wiring.reset()
         exporter = wiring.get_telemetry_exporter()
-        assert isinstance(exporter, LoggingExporter)
+        assert isinstance(exporter, CompositeExporter)
+        backends = [type(backend).__name__ for backend in exporter._exporters]
+        assert "LoggingExporter" in backends
+        assert "MetricsExporter" in backends
         assert wiring.get_telemetry_exporter() is exporter
         wiring.reset()
