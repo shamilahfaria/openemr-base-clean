@@ -22,12 +22,15 @@ warning.
 """
 from __future__ import annotations
 
+import logging
 import re
 
 from pydantic import BaseModel
 
 from .orchestrator import TurnDraft
 from .tools.chart import AllergyRecord, MedicationRecord
+
+logger = logging.getLogger(__name__)
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 _DOSE_MG_RE = re.compile(r"(\d+(?:\.\d+)?)\s*mg\b", re.IGNORECASE)
@@ -97,6 +100,9 @@ class Verifier:
         withheld: list[str] = []
         warnings: list[str] = []
 
+        uncited = 0
+        unknown_source = 0
+
         sentences = [s for s in _SENTENCE_SPLIT_RE.split(draft.answer) if s.strip()]
         for sentence in sentences:
             cited_ids = CITATION_RE.findall(sentence)
@@ -111,6 +117,7 @@ class Verifier:
                 else:
                     # Unknown source — the claim cannot be attributed. Block it.
                     withheld.append(claim)
+                    unknown_source += 1
             elif GENERAL_MARKER in sentence:
                 # Outside-record content is allowed but must be labeled.
                 labeled = _clean(sentence)
@@ -122,6 +129,20 @@ class Verifier:
             else:
                 # Uncited clinical content: prefer silence over invention.
                 withheld.append(claim)
+                uncited += 1
+
+        if withheld:
+            # PHI-free diagnostics: counts and reasons only, never claim text
+            # or record ids (those live in the audit trail).
+            logger.info(
+                "verifier withheld=%d (uncited=%d unknown_source=%d) "
+                "kept=%d valid_sources=%d",
+                len(withheld),
+                uncited,
+                unknown_source,
+                len(kept),
+                len(valid_ids),
+            )
 
         if withheld:
             warnings.append(

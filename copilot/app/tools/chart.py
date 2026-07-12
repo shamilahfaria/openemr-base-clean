@@ -89,6 +89,22 @@ async def _search(
     return _bundle_resources(bundle)
 
 
+def _concept_text(concept: dict | None) -> str:
+    """CodeableConcept display text: prefer .text, fall back to coding display.
+
+    OpenEMR frequently omits .text on CodeableConcepts (allergies, meds,
+    manifestations) and only fills coding[].display.
+    """
+    if not isinstance(concept, dict):
+        return ""
+    if concept.get("text"):
+        return concept["text"]
+    for coding in concept.get("coding") or []:
+        if isinstance(coding, dict) and coding.get("display"):
+            return coding["display"]
+    return ""
+
+
 def _dose_text(dosage: dict) -> str | None:
     for dose_and_rate in dosage.get("doseAndRate") or []:
         quantity = dose_and_rate.get("doseQuantity") or {}
@@ -105,13 +121,15 @@ async def get_medications(
     records = []
     for resource in await _search(client, "MedicationRequest", patient_id, bearer_token):
         dosages = resource.get("dosageInstruction") or []
-        dosage = dosages[0] if dosages else {}
+        # OpenEMR emits dosageInstruction entries as empty *lists* when no
+        # dosage is recorded ("dosageInstruction": [[]]) — only trust dicts.
+        dosage = dosages[0] if dosages and isinstance(dosages[0], dict) else {}
         is_prn = bool(dosage.get("asNeededBoolean"))
         timing_code = ((dosage.get("timing") or {}).get("code") or {}).get("text")
         records.append(
             MedicationRecord(
                 source_id=resource["id"],
-                name=(resource.get("medicationCodeableConcept") or {}).get("text", ""),
+                name=_concept_text(resource.get("medicationCodeableConcept")),
                 dose=_dose_text(dosage),
                 route=(dosage.get("route") or {}).get("text"),
                 sig=dosage.get("text"),
@@ -130,15 +148,15 @@ async def get_allergies(
     records = []
     for resource in await _search(client, "AllergyIntolerance", patient_id, bearer_token):
         reactions = [
-            manifestation["text"]
+            _concept_text(manifestation)
             for reaction in resource.get("reaction") or []
             for manifestation in reaction.get("manifestation") or []
-            if "text" in manifestation
+            if _concept_text(manifestation)
         ]
         records.append(
             AllergyRecord(
                 source_id=resource["id"],
-                substance=(resource.get("code") or {}).get("text", ""),
+                substance=_concept_text(resource.get("code")),
                 criticality=resource.get("criticality"),
                 reactions=reactions,
             )
