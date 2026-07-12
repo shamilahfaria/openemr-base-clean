@@ -180,3 +180,27 @@ class TestResultMetadata:
     def test_verification_is_deterministic(self):
         args = ("On morphine [src: med-1]. Uncited claim.", [MORPHINE])
         assert verify(*args) == verify(*args)
+
+
+class TestCitationNormalization:
+    """Failure mode guarded: the model prefixes a valid source id with its
+    FHIR resource type ("Observation/<id>") or changes its case — previously
+    withheld as an unknown source (observed live ~1 in 4 goals-of-care turns).
+    A genuinely unknown id must STILL be withheld."""
+
+    def test_resource_type_prefix_and_case_are_tolerated(self):
+        result = verify(
+            "Code status is DNR [src: Observation/MED-1].",
+            [med("med-1", "morphine")],
+        )
+        assert result.passed
+        assert result.citations[0].source_id == "med-1"
+        assert not result.withheld
+
+    def test_unknown_id_is_still_withheld(self):
+        result = verify(
+            "Code status is DNR [src: Observation/other-id].",
+            [med("med-1", "morphine")],
+        )
+        assert not result.passed
+        assert result.withheld

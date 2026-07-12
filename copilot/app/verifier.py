@@ -103,9 +103,20 @@ class Verifier:
         uncited = 0
         unknown_source = 0
 
+        def normalize(cited: str) -> str:
+            """Match tolerantly, never loosely: models sometimes prefix the id
+            with its FHIR resource type ("Observation/<id>"). Strip that prefix
+            and compare case-insensitively — the id itself must still match a
+            record retrieved THIS turn exactly."""
+            bare = cited.rsplit("/", 1)[-1].strip().casefold()
+            for valid in valid_ids:
+                if valid.casefold() == bare:
+                    return valid
+            return cited
+
         sentences = [s for s in _SENTENCE_SPLIT_RE.split(draft.answer) if s.strip()]
         for sentence in sentences:
-            cited_ids = CITATION_RE.findall(sentence)
+            cited_ids = [normalize(c) for c in CITATION_RE.findall(sentence)]
             claim = _clean(sentence)
 
             if cited_ids:
