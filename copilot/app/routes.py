@@ -14,6 +14,7 @@ from .dependencies import (
     evaluate_readiness,
     get_dependency_checker,
 )
+from .metrics import get_registry
 
 router = APIRouter()
 
@@ -22,6 +23,18 @@ router = APIRouter()
 async def ui() -> FileResponse:
     """The chat panel (thin client for /chat)."""
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@router.get("/metrics")
+async def metrics() -> dict:
+    """PHI-free aggregate metrics for the current process (JSON)."""
+    return get_registry().snapshot()
+
+
+@router.get("/dashboard")
+async def dashboard() -> FileResponse:
+    """Live observability dashboard rendering /metrics."""
+    return FileResponse(STATIC_DIR / "dashboard.html")
 
 
 @router.get("/health")

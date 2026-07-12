@@ -21,12 +21,15 @@ Rules the tests pin:
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel
 
 from .scope import PatientScopeGuard, ScopeViolation
 from .sessions import SessionStore
+
+logger = logging.getLogger(__name__)
 
 MAX_TOOL_ITERATIONS = 10
 
@@ -58,6 +61,8 @@ class TurnDraft(BaseModel):
     answer: str
     retrieved: list[Any]        # every record returned by tools this turn
     tools_used: list[str]       # tool names actually executed
+    input_tokens: int = 0       # summed across the turn's model round-trips
+    output_tokens: int = 0
 
 
 class Orchestrator:
@@ -147,8 +152,12 @@ class Orchestrator:
 
         try:
             records = await tool(block.input, bearer_token)
-        except Exception:
-            # The model gets a generic failure; details stay in server logs.
+        except Exception as exc:
+            # The model gets a generic failure; details stay in server logs
+            # (exception type only — never record contents).
+            logger.warning(
+                "tool failed name=%s error=%s", block.name, type(exc).__name__
+            )
             return error(f"tool failed: {block.name}")
 
         tools_used.append(block.name)
@@ -178,6 +187,8 @@ class Orchestrator:
 
         tools_used: list[str] = []
         retrieved: list[Any] = []
+        input_tokens = 0
+        output_tokens = 0
 
         for _ in range(MAX_TOOL_ITERATIONS):
             response = await self._client.messages.create(
@@ -187,6 +198,9 @@ class Orchestrator:
                 messages=messages,
                 tools=self._tool_specs(),
             )
+            usage = getattr(response, "usage", None)
+            input_tokens += getattr(usage, "input_tokens", 0) or 0
+            output_tokens += getattr(usage, "output_tokens", 0) or 0
 
             if response.stop_reason != "tool_use":
                 answer = "".join(
@@ -197,7 +211,11 @@ class Orchestrator:
                 self._sessions.append(session_id, patient_id, "user", message)
                 self._sessions.append(session_id, patient_id, "assistant", answer)
                 return TurnDraft(
-                    answer=answer, retrieved=retrieved, tools_used=tools_used
+                    answer=answer,
+                    retrieved=retrieved,
+                    tools_used=tools_used,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 )
 
             results = [

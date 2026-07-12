@@ -28,7 +28,7 @@ from pydantic import BaseModel, field_validator
 
 from .audit import AuditTrail, build_denial_event, build_turn_event
 from .middleware import get_correlation_id
-from .observability import TelemetryExporter, TurnTelemetry
+from .observability import TelemetryExporter, TurnTelemetry, turn_cost_usd
 from .orchestrator import Orchestrator, TurnDraft
 from .scope import PatientScopeGuard
 from .sessions import SessionPatientMismatch
@@ -150,6 +150,9 @@ async def chat(
             withheld_count=len(result.withheld),
             latency_ms=(time.monotonic() - started) * 1000,
             model=getattr(orchestrator, "_model", "unknown"),
+            input_tokens=draft.input_tokens,
+            output_tokens=draft.output_tokens,
+            cost_usd=turn_cost_usd(draft.input_tokens, draft.output_tokens),
         )
         try:
             exporter.export(telemetry)
