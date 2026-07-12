@@ -131,12 +131,20 @@ const fields = { token: document.getElementById("token"),
                  clinician: document.getElementById("clinician") };
 
 // --- connection persistence: localStorage + non-sensitive URL params ---
+// Pastes from chat apps/PDFs often carry zero-width or other non-ASCII
+// characters that fetch() rejects in headers — keep only printable ASCII.
+function sanitize(value) {
+  return (value || "").replace(/[^\x21-\x7E]/g, "");
+}
+
 const params = new URLSearchParams(location.search);
 for (const key of Object.keys(fields)) {
   const fromUrl = key !== "token" ? params.get(key) : null;
-  fields[key].value = fromUrl || localStorage.getItem("ccp." + key) || "";
+  fields[key].value = sanitize(fromUrl || localStorage.getItem("ccp." + key));
   fields[key].addEventListener("input", () => {
-    localStorage.setItem("ccp." + key, fields[key].value.trim());
+    const clean = sanitize(fields[key].value);
+    if (clean !== fields[key].value) fields[key].value = clean;
+    localStorage.setItem("ccp." + key, clean);
     refreshDot();
   });
 }
