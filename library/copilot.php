@@ -52,10 +52,34 @@ function copilotPatientUuid(int $pid): ?string
 }
 
 /**
+ * Username of the demo/test admin account. The one-click "Generate demo token"
+ * affordance mints a privileged admin token, so it is offered only to this
+ * user. Configurable for non-default demo setups.
+ */
+function copilotDemoAdminUser(): string
+{
+    $configured = $GLOBALS['copilot_demo_admin_user'] ?? getenv('COPILOT_DEMO_ADMIN_USER');
+    $user = is_string($configured) ? trim($configured) : '';
+    return $user !== '' ? $user : 'admin';
+}
+
+/**
+ * True when the given OpenEMR username is the demo admin — i.e. the only user
+ * who should see the demo-token button.
+ */
+function copilotIsDemoAdmin(?string $username): bool
+{
+    return $username !== null && $username !== '' && $username === copilotDemoAdminUser();
+}
+
+/**
  * Build the Co-Pilot /ui launch URL. The bearer token is never placed in the
  * URL — the UI collects it separately (or mints a demo token in one click).
+ *
+ * When $demoAdmin is true the URL carries ``demo=1``, which is the only signal
+ * that reveals the "Generate demo token" button in the Co-Pilot UI.
  */
-function copilotLaunchUrl(?string $patientUuid = null, ?string $clinician = null): string
+function copilotLaunchUrl(?string $patientUuid = null, ?string $clinician = null, bool $demoAdmin = false): string
 {
     $query = [];
     if (!empty($patientUuid)) {
@@ -63,6 +87,9 @@ function copilotLaunchUrl(?string $patientUuid = null, ?string $clinician = null
     }
     if (!empty($clinician)) {
         $query['clinician'] = $clinician;
+    }
+    if ($demoAdmin) {
+        $query['demo'] = '1';
     }
     $url = copilotBaseUrl() . '/ui';
     if ($query !== []) {

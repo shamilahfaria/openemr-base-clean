@@ -1094,9 +1094,11 @@ $oemr_ui = new OemrUI($arrOeUiSettings);
             // agent pre-loaded with this chart's FHIR patient uuid and the
             // signed-in clinician; the bearer token is collected in the Co-Pilot
             // UI (or minted there in one click), never passed in the URL.
+            $copilotAuthUser = (string)($session->get('authUser') ?? '');
             $copilotPatientUrl = copilotLaunchUrl(
                 copilotPatientUuid((int)$pid),
-                (string)($session->get('authUser') ?? '')
+                $copilotAuthUser,
+                copilotIsDemoAdmin($copilotAuthUser)
             );
             ?>
             <div class="row">

@@ -47,6 +47,12 @@ DEMO_PATIENT=a2390997-1e8c-4c41-99f5-676ad433d365           # optional, prefills
 ```
 
 The client secret and OpenEMR's raw error body are never returned to the browser.
+The button mints a privileged admin token, so it is an **admin/test-user
+affordance only**: it stays hidden unless the UI is opened with `?demo=1`, which
+OpenEMR's launcher (`library/copilot.php`) adds exclusively for the demo admin
+user (the username in `COPILOT_DEMO_ADMIN_USER`, default `admin`). Regular
+clinicians launching the Co-Pilot never see it.
+
 OpenEMR's own UI also links straight here (top-nav launcher + a per-patient
 "Ask Clinical Co-Pilot" button on the chart) via `library/copilot.php`.
 

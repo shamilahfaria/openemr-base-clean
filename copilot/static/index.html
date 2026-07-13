@@ -36,6 +36,7 @@
                      border-radius:6px; font-size:12px; background:#fff; }
   .conn-body .full { grid-column:1 / -1; }
   .conn-body .gen { display:flex; align-items:center; gap:10px; }
+  .conn-body .gen[hidden] { display:none; }
   .conn-body .gen button { border:1px solid var(--navy); background:var(--navy-soft); color:var(--navy);
                            border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; }
   .conn-body .gen button:hover { background:#e2e9f2; }
@@ -102,7 +103,7 @@
       <div class="conn-body">
         <div class="full"><label>OAuth2 bearer token (kept in this browser only)</label>
           <input id="token" type="password" placeholder="paste access token" autocomplete="off"></div>
-        <div class="full gen">
+        <div class="full gen" id="genrow" hidden>
           <button type="button" id="gentoken">⚡ Generate demo token</button>
           <span id="genmsg"></span>
         </div>
@@ -166,8 +167,12 @@ function connected() {
 
 // --- one-click demo token: mint a real OpenEMR OAuth2 token server-side ---
 // (only works where the sidecar has DEMO_TOKEN_ENABLED; otherwise 404.)
+// The button mints a privileged admin token, so it is an admin/test-user
+// affordance only: OpenEMR sets ?demo=1 in the launch link exclusively for the
+// demo admin user, and the button stays hidden otherwise.
 const gentoken = document.getElementById("gentoken");
 const genmsg = document.getElementById("genmsg");
+if (params.get("demo") === "1") document.getElementById("genrow").hidden = false;
 function setGenMsg(text, cls) { genmsg.textContent = text; genmsg.className = cls || ""; }
 gentoken.addEventListener("click", async () => {
   gentoken.disabled = true; setGenMsg("Requesting token…");
