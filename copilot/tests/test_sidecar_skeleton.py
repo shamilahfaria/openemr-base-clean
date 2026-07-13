@@ -1,21 +1,15 @@
-"""
-TDD (Red) suite — MVP build step 1: the FastAPI sidecar skeleton.
+"""Sidecar skeleton endpoints: root, liveness, readiness, correlation id.
 
-Covers three concerns from ARCHITECTURE.md (Components 2, 3, 9) and the
-AgentForge assignment's engineering requirements:
+Covers cross-boundary concerns from ARCHITECTURE.md (Components 2, 3, 9):
 
+  * GET /         — redirects to the chat panel (/ui) so the bare link works.
   * GET /health   — liveness only, no dependency checks.
-  * GET /ready    — "readiness must validate meaningful dependencies": 200 iff
-                    OpenEMR + Anthropic + Langfuse are all reachable, else 503.
-  * correlation ID — "every request carries a correlation ID across service
-                    boundaries": honor an inbound X-Correlation-ID, else mint one,
-                    and always echo it on the response.
+  * GET /ready    — validates meaningful dependencies: 200 iff OpenEMR +
+                    Anthropic + Langfuse are all reachable, else 503.
+  * correlation ID — honor an inbound X-Correlation-ID, else mint one, and
+                    always echo it on the response.
 
-Every test here MUST fail until the implementation exists (Red stage of
-Red-Green-Refactor). The endpoints currently raise NotImplementedError (→ HTTP
-500) and the middleware is not yet wired, so status/body/header assertions fail.
-
-Agreed contract:
+Contract:
   * /health  200  -> {"status": "ok"}
   * /ready   200  -> {"status": "ready",     "checks": {dep: "ok"}}
   * /ready   503  -> {"status": "not_ready", "checks": {dep: "ok" | "unreachable"}}
@@ -36,6 +30,18 @@ def _is_uuid(value: str) -> bool:
         return True
     except (ValueError, AttributeError, TypeError):
         return False
+
+
+class TestRootRedirect:
+    """GET / — the bare link lands on the chat panel."""
+
+    def test_root_redirects_to_ui(self, client):
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code in (307, 308)
+        assert response.headers["location"] == "/ui"
+
+    def test_root_followed_lands_on_ui(self, client):
+        assert client.get("/").status_code == 200
 
 
 class TestHealthEndpoint:

@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Response, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -17,6 +17,12 @@ from .dependencies import (
 from .metrics import get_registry
 
 router = APIRouter()
+
+
+@router.get("/")
+async def root() -> RedirectResponse:
+    """Bare link lands on the chat panel."""
+    return RedirectResponse(url="/ui")
 
 
 @router.get("/ui")
