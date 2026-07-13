@@ -1,4 +1,4 @@
-"""Production wiring — STUB (no implementation yet).
+"""Production wiring.
 
 Builds the real dependency graph behind chat.py's provider seams:
 settings -> FhirClient -> tool registry -> Orchestrator (Anthropic client via

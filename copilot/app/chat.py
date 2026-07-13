@@ -1,4 +1,4 @@
-"""POST /chat — one conversation turn. STUB (no implementation yet).
+"""POST /chat — one conversation turn.
 
 Assembles the pipeline (ARCHITECTURE.md Request Flow): auth extraction ->
 scope guard -> orchestrator -> verifier -> (fallback on failure) -> audit

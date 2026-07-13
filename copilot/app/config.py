@@ -1,4 +1,4 @@
-"""Environment configuration — STUB (no implementation yet).
+"""Environment configuration.
 
 Fail closed at startup: required settings missing -> error, never a
 half-configured service.

@@ -1,4 +1,4 @@
-"""Read-only FHIR client for OpenEMR — STUB (no implementation yet).
+"""Read-only FHIR client for OpenEMR.
 
 Contract (ARCHITECTURE.md: Tools & Contracts; AUDIT.md S5, A-integration):
   * Every request carries the signed-in user's OAuth2 bearer token

@@ -1,4 +1,4 @@
-"""Agent Orchestrator — STUB (no implementation yet).
+"""Agent Orchestrator.
 
 A thin Anthropic tool-use loop (ARCHITECTURE.md, Component 5). Per turn:
 load session history -> build a bounded, patient-scoped prompt -> let Claude

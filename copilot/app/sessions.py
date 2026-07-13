@@ -1,4 +1,4 @@
-"""In-memory session store — STUB (no implementation yet).
+"""In-memory session store.
 
 Multi-turn state, scoped to a single patient chart session (ARCHITECTURE.md,
 Component 4): one open chart = one session, held in memory, dropped at session

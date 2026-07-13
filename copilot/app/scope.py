@@ -1,4 +1,4 @@
-"""Patient Scope Guard — STUB (no implementation yet).
+"""Patient Scope Guard.
 
 The audit found OpenEMR enforces NO patient-level authorization for a
 clinical-user token (AUDIT.md S1): a nurse's token can read any patient her

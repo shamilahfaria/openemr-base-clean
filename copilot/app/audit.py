@@ -1,4 +1,4 @@
-"""HIPAA audit trail — STUB (no implementation yet).
+"""HIPAA audit trail.
 
 ARCHITECTURE.md Component 10 / AUDIT.md C2: OpenEMR attributes API reads to
 the OAuth service account and never records the onward disclosure to the LLM,

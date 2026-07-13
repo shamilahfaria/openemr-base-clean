@@ -1,4 +1,4 @@
-"""Verification layer — STUB (contracts only).
+"""Verification layer.
 
 The trust boundary (ARCHITECTURE.md "Verification (the crux)"): deterministic,
 runs after the model's draft and before display. Two checks:

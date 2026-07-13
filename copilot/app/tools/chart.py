@@ -1,4 +1,4 @@
-"""Chart retrieval tools — STUBS (contracts only).
+"""Chart retrieval tools.
 
 Read-only FHIR tools per ARCHITECTURE.md's tool table. Shared rules:
   * every record carries a ``source_id`` (FHIR resource id) for attribution

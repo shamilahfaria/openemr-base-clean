@@ -1,4 +1,4 @@
-"""get_patient_summary — cheap patient orientation tool. STUB (contracts only).
+"""get_patient_summary — cheap patient orientation tool.
 
 ARCHITECTURE.md tool table: "demographics, active problems, recent context."
 Backed by three FHIR reads: ``Patient/{id}``, ``Condition`` (active), and
