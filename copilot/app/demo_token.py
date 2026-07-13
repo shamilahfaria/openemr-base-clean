@@ -23,6 +23,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from .config import resolve_openemr_urls
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -56,7 +58,8 @@ class DemoTokenConfig:
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "DemoTokenConfig":
         source = os.environ if env is None else env
-        base = (source.get("OPENEMR_BASE_URL") or "http://localhost:8300").rstrip("/")
+        base_url, _ = resolve_openemr_urls(source)
+        base = (base_url or "http://localhost:8300").rstrip("/")
         token_url = source.get("OPENEMR_OAUTH_TOKEN_URL") or f"{base}/oauth2/default/token"
         return cls(
             token_url=token_url,

@@ -53,6 +53,35 @@ class TestSettings:
         assert settings.openemr_fhir_base_url == REQUIRED_ENV["OPENEMR_FHIR_BASE_URL"]
         assert settings.anthropic_api_key == REQUIRED_ENV["ANTHROPIC_API_KEY"]
 
+    def test_base_url_alone_derives_the_fhir_mount(self):
+        # One canonical base is enough; the FHIR mount is derived.
+        settings = load_settings(
+            {"OPENEMR_BASE_URL": "https://openemr.example.test", "ANTHROPIC_API_KEY": "sk-test"}
+        )
+        assert settings.openemr_base_url == "https://openemr.example.test"
+        assert settings.openemr_fhir_base_url == "https://openemr.example.test/apis/default/fhir"
+
+    def test_fhir_url_alone_recovers_the_base(self):
+        settings = load_settings(
+            {
+                "OPENEMR_FHIR_BASE_URL": "https://openemr.example.test/apis/default/fhir",
+                "ANTHROPIC_API_KEY": "sk-test",
+            }
+        )
+        assert settings.openemr_base_url == "https://openemr.example.test"
+        assert settings.openemr_fhir_base_url == "https://openemr.example.test/apis/default/fhir"
+
+    def test_explicit_fhir_url_overrides_the_derived_mount(self):
+        settings = load_settings(
+            {
+                "OPENEMR_BASE_URL": "https://openemr.example.test",
+                "OPENEMR_FHIR_BASE_URL": "https://fhir.example.test/custom/fhir",
+                "ANTHROPIC_API_KEY": "sk-test",
+            }
+        )
+        assert settings.openemr_base_url == "https://openemr.example.test"
+        assert settings.openemr_fhir_base_url == "https://fhir.example.test/custom/fhir"
+
     def test_defaults_applied(self):
         settings = load_settings(REQUIRED_ENV)
         assert settings.anthropic_model == DEFAULT_MODEL

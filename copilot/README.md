@@ -19,7 +19,7 @@ See the design docs: [`ARCHITECTURE.md`](../AgentForge/ARCHITECTURE.md),
 cd copilot
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export OPENEMR_FHIR_BASE_URL=http://localhost:8300/apis/default/fhir
+export OPENEMR_BASE_URL=http://localhost:8300   # FHIR mount derived; set OPENEMR_FHIR_BASE_URL only for a non-standard mount
 export ANTHROPIC_API_KEY=sk-ant-...
 uvicorn app.main:app --port 8055
 ```
