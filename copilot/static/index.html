@@ -35,6 +35,14 @@
   .conn-body input { width:100%; padding:6px 8px; border:1px solid var(--line);
                      border-radius:6px; font-size:12px; background:#fff; }
   .conn-body .full { grid-column:1 / -1; }
+  .conn-body .gen { display:flex; align-items:center; gap:10px; }
+  .conn-body .gen button { border:1px solid var(--navy); background:var(--navy-soft); color:var(--navy);
+                           border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; }
+  .conn-body .gen button:hover { background:#e2e9f2; }
+  .conn-body .gen button:disabled { opacity:.5; cursor:default; }
+  .conn-body .gen #genmsg { font-size:11px; color:var(--muted); }
+  .conn-body .gen #genmsg.ok { color:var(--ok); }
+  .conn-body .gen #genmsg.bad { color:var(--bad); }
   .conn-note { grid-column:1 / -1; font-size:11px; color:var(--muted); }
 
   #log { flex:1; overflow-y:auto; padding:14px 2px; display:flex; flex-direction:column; gap:12px; }
@@ -94,6 +102,10 @@
       <div class="conn-body">
         <div class="full"><label>OAuth2 bearer token (kept in this browser only)</label>
           <input id="token" type="password" placeholder="paste access token" autocomplete="off"></div>
+        <div class="full gen">
+          <button type="button" id="gentoken">⚡ Generate demo token</button>
+          <span id="genmsg"></span>
+        </div>
         <div><label>Patient ID (active chart)</label><input id="patient" placeholder="patient uuid"></div>
         <div><label>Clinician ID</label><input id="clinician" placeholder="e.g. nurse-maria"></div>
         <div class="conn-note">Stored in localStorage for this browser. <code>?patient=…&amp;clinician=…</code>
@@ -151,6 +163,35 @@ for (const key of Object.keys(fields)) {
 function connected() {
   return Object.values(fields).every(f => f.value.trim());
 }
+
+// --- one-click demo token: mint a real OpenEMR OAuth2 token server-side ---
+// (only works where the sidecar has DEMO_TOKEN_ENABLED; otherwise 404.)
+const gentoken = document.getElementById("gentoken");
+const genmsg = document.getElementById("genmsg");
+function setGenMsg(text, cls) { genmsg.textContent = text; genmsg.className = cls || ""; }
+gentoken.addEventListener("click", async () => {
+  gentoken.disabled = true; setGenMsg("Requesting token…");
+  try {
+    const response = await fetch("/demo/token", { method: "POST" });
+    if (response.status === 404) { setGenMsg("Demo token is disabled on this deployment.", "bad"); return; }
+    if (!response.ok) { setGenMsg("Could not mint a token (" + response.status + ").", "bad"); return; }
+    const data = await response.json();
+    fields.token.value = sanitize(data.access_token);
+    localStorage.setItem("ccp.token", fields.token.value);
+    if (data.patient && !fields.patient.value.trim()) {
+      fields.patient.value = sanitize(data.patient); localStorage.setItem("ccp.patient", fields.patient.value);
+    }
+    if (data.clinician && !fields.clinician.value.trim()) {
+      fields.clinician.value = sanitize(data.clinician); localStorage.setItem("ccp.clinician", fields.clinician.value);
+    }
+    refreshDot();
+    setGenMsg("Token ready — connected.", "ok");
+  } catch (err) {
+    setGenMsg("Network error minting token.", "bad");
+  } finally {
+    gentoken.disabled = false;
+  }
+});
 function refreshDot() {
   document.getElementById("dot").className = "dot" + (connected() ? " on" : "");
   document.getElementById("connlabel").textContent = connected()

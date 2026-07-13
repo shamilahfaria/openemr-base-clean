@@ -6,6 +6,7 @@ import logging
 from fastapi import FastAPI, Request
 
 from . import chat, wiring
+from .demo_token import router as demo_token_router
 from .metrics import get_registry
 from .middleware import CorrelationIdMiddleware
 from .routes import router
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
 
     app.include_router(router)
     app.include_router(chat.router)
+    app.include_router(demo_token_router)
     # Bind the /chat provider seams to production wiring (tests re-override).
     app.dependency_overrides[chat.get_orchestrator] = wiring.get_orchestrator
     app.dependency_overrides[chat.get_verifier] = wiring.get_verifier

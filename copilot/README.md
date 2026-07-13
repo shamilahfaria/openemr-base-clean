@@ -21,6 +21,29 @@ uvicorn app.main:app --port 8055
 - Chat UI: http://localhost:8055/ui
 - `GET /health` · `GET /ready` · `POST /chat`
 
+## One-click demo token (removes the manual OAuth dance)
+
+The bearer passed to `/chat` must be a real OpenEMR OAuth2 token. For demo
+environments the UI has a **Generate demo token** button that calls
+`POST /demo/token`, which runs OpenEMR's password grant server-side and returns
+a FHIR-scoped access token. It is **off by default** (404) and only turns on when
+these env vars are set on the sidecar:
+
+```bash
+DEMO_TOKEN_ENABLED=1
+OPENEMR_BASE_URL=https://openemr-early-sub.up.railway.app   # or OPENEMR_OAUTH_TOKEN_URL
+DEMO_OAUTH_CLIENT_ID=...        # a registered, enabled OpenEMR OAuth client
+DEMO_OAUTH_CLIENT_SECRET=...
+DEMO_OAUTH_USERNAME=admin
+DEMO_OAUTH_PASSWORD=<openemr-admin-password>
+DEMO_CLINICIAN=nurse-maria                                  # optional, prefills the UI
+DEMO_PATIENT=a2390997-1e8c-4c41-99f5-676ad433d365           # optional, prefills the UI
+```
+
+The client secret and OpenEMR's raw error body are never returned to the browser.
+OpenEMR's own UI also links straight here (top-nav launcher + a per-patient
+"Ask Clinical Co-Pilot" button on the chart) via `library/copilot.php`.
+
 ## Tests & evals
 
 ```bash
