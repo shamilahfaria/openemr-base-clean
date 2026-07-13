@@ -89,20 +89,43 @@ async def _search(
     return _bundle_resources(bundle)
 
 
-def _concept_text(concept: dict | None) -> str:
-    """CodeableConcept display text: prefer .text, fall back to coding display.
+def _concept_text_or_none(concept: dict | None) -> str | None:
+    """CodeableConcept display text: prefer .text, fall back to the first coding
+    display, else None.
 
     OpenEMR frequently omits .text on CodeableConcepts (allergies, meds,
-    manifestations) and only fills coding[].display.
+    manifestations, lab/problem codes, code-status answers) and only fills
+    coding[].display — reading .text alone yields empty names, which leaves the
+    verifier nothing to cite and forces the turn to fall back.
     """
     if not isinstance(concept, dict):
-        return ""
+        return None
     if concept.get("text"):
         return concept["text"]
     for coding in concept.get("coding") or []:
         if isinstance(coding, dict) and coding.get("display"):
             return coding["display"]
-    return ""
+    return None
+
+
+def _concept_text(concept: dict | None) -> str:
+    """Non-null variant for fields typed as ``str`` (a name we can cite or "")."""
+    return _concept_text_or_none(concept) or ""
+
+
+def _observation_value(resource: dict) -> tuple[str | None, str | None]:
+    """Observation value + unit across the shapes OpenEMR emits: a numeric
+    ``valueQuantity``, a coded ``valueCodeableConcept`` (qualitative results),
+    or a plain ``valueString``."""
+    quantity = resource.get("valueQuantity") or {}
+    if "value" in quantity:
+        return str(quantity["value"]), quantity.get("unit")
+    coded = _concept_text_or_none(resource.get("valueCodeableConcept"))
+    if coded:
+        return coded, None
+    if resource.get("valueString"):
+        return resource["valueString"], None
+    return None, None
 
 
 def _dose_text(dosage: dict) -> str | None:
@@ -167,13 +190,13 @@ async def get_allergies(
 def _parse_observations(resources: list[dict]) -> list[ObservationRecord]:
     records = []
     for resource in resources:
-        quantity = resource.get("valueQuantity") or {}
+        value, unit = _observation_value(resource)
         records.append(
             ObservationRecord(
                 source_id=resource["id"],
-                display=(resource.get("code") or {}).get("text", ""),
-                value=str(quantity["value"]) if "value" in quantity else None,
-                unit=quantity.get("unit"),
+                display=_concept_text(resource.get("code")),
+                value=value,
+                unit=unit,
                 effective=resource.get("effectiveDateTime"),
             )
         )
@@ -208,7 +231,7 @@ async def get_problem_list(
     return [
         ProblemRecord(
             source_id=resource["id"],
-            display=(resource.get("code") or {}).get("text", ""),
+            display=_concept_text(resource.get("code")),
             clinical_status=_clinical_status(resource),
             onset=resource.get("onsetDateTime"),
         )
@@ -250,13 +273,6 @@ async def get_goals_of_care(
         client, "Observation", patient_id, bearer_token,
         {"category": GOALS_OF_CARE_CATEGORY},
     )
-    def codeable_text(concept: dict | None) -> str | None:
-        concept = concept or {}
-        if concept.get("text"):
-            return concept["text"]
-        codings = concept.get("coding") or []
-        return codings[0].get("display") if codings else None
-
     records = []
     for resource in resources:
         code = resource.get("code") or {}
@@ -265,8 +281,8 @@ async def get_goals_of_care(
             GoalsOfCareRecord(
                 source_id=resource.get("id", ""),
                 code=codings[0].get("code", "") if codings else "",
-                question=codeable_text(code) or "",
-                answer=codeable_text(resource.get("valueCodeableConcept")),
+                question=_concept_text(code),
+                answer=_concept_text_or_none(resource.get("valueCodeableConcept")),
                 effective=resource.get("effectiveDateTime"),
             )
         )

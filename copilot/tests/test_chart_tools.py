@@ -1,5 +1,4 @@
-"""
-TDD (Red) suite — build step 5: the remaining chart tools.
+"""Chart retrieval tools.
 
 Shared contract (parametrized over all 8 tools): patient-scoped + bearer
 forwarded, blank bearer fails closed with zero FHIR calls, empty searchset ->
@@ -259,7 +258,64 @@ class TestLabsAndVitals:
         assert records[0].effective == "2026-07-06"
 
 
+class TestObservationCodingFallback:
+    """Real OpenEMR FHIR omits code.text and value.text, filling only
+    coding[].display — the parser must read the coding so labs/vitals carry a
+    citable name and value instead of degrading the turn."""
+
+    @pytest.mark.anyio
+    async def test_display_falls_back_to_coding_when_text_absent(self):
+        resource = {
+            "resource": {
+                "resourceType": "Observation",
+                "id": "lab-c",
+                "code": {"coding": [{"code": "2160-0", "display": "Creatinine"}]},
+                "valueQuantity": {"value": 1.8, "unit": "mg/dL"},
+                "effectiveDateTime": "2026-07-06",
+            }
+        }
+        client = FakeFhirClient({"Observation": bundle([resource])})
+        (record,) = await get_labs(client, PATIENT_ID, TOKEN)
+        assert record.display == "Creatinine"
+        assert record.value == "1.8"
+
+    @pytest.mark.anyio
+    async def test_qualitative_value_read_from_codeable_concept(self):
+        resource = {
+            "resource": {
+                "resourceType": "Observation",
+                "id": "lab-q",
+                "code": {"coding": [{"display": "MRSA screen"}]},
+                "valueCodeableConcept": {"coding": [{"display": "Positive"}]},
+                "effectiveDateTime": "2026-07-06",
+            }
+        }
+        client = FakeFhirClient({"Observation": bundle([resource])})
+        (record,) = await get_labs(client, PATIENT_ID, TOKEN)
+        assert record.display == "MRSA screen"
+        assert record.value == "Positive"
+        assert record.unit is None
+
+
 class TestProblemList:
+    @pytest.mark.anyio
+    async def test_display_falls_back_to_coding_when_text_absent(self):
+        coded = bundle(
+            [
+                {
+                    "resource": {
+                        "resourceType": "Condition",
+                        "id": "cond-c",
+                        "clinicalStatus": {"coding": [{"code": "active"}]},
+                        "code": {"coding": [{"code": "363418001", "display": "Metastatic pancreatic cancer"}]},
+                    }
+                }
+            ]
+        )
+        client = FakeFhirClient({"Condition": coded})
+        (record,) = await get_problem_list(client, PATIENT_ID, TOKEN)
+        assert record.display == "Metastatic pancreatic cancer"
+
     @pytest.mark.anyio
     async def test_includes_active_and_historical_problems(self):
         def condition(cond_id, display, status):
