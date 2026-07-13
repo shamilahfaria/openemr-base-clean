@@ -41,6 +41,7 @@ require_once("../history/history.inc.php");
 require_once($srcdir . "/clinical_rules.php");
 require_once($srcdir . "/group.inc.php");
 require_once(__DIR__ . "/../../../library/appointments.inc.php");
+require_once(__DIR__ . "/../../../library/copilot.php");
 
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Csrf\CsrfUtils;
@@ -1088,6 +1089,21 @@ $oemr_ui = new OemrUI($arrOeUiSettings);
         ?>
         <div class="main mb-1">
             <!-- start main content div -->
+            <?php
+            // Clinical Co-Pilot (AI) — patient-context launcher. Opens the sidecar
+            // agent pre-loaded with this chart's FHIR patient uuid and the
+            // signed-in clinician; the bearer token is collected in the Co-Pilot
+            // UI (or minted there in one click), never passed in the URL.
+            $copilotPatientUrl = copilotLaunchUrl(
+                copilotPatientUuid((int)$pid),
+                (string)($session->get('authUser') ?? '')
+            );
+            ?>
+            <div class="row">
+                <div class="col-12 mb-2">
+                    <a class="btn btn-outline-info btn-sm" href="<?php echo attr($copilotPatientUrl); ?>" title="<?php echo xla('Open the Clinical Co-Pilot (AI assistant) for this patient in a new tab'); ?>" rel="noopener" target="_blank"><i class="fa fa-robot mr-1"></i><?php echo xlt('Ask Clinical Co-Pilot about this patient'); ?></a>
+                </div>
+            </div>
             <div class="row">
                 <?php
                 $t = $twig->getTwig();

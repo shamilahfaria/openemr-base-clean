@@ -21,6 +21,7 @@
 
 $sessionAllowWrite = true;
 require_once(__DIR__ . '/../../globals.php');
+require_once(__DIR__ . '/../../../library/copilot.php');
 require_once \OpenEMR\Core\OEGlobalsBag::getInstance()->getSrcDir() . '/ESign/Api.php';
 
 use ESign\Api;
@@ -512,6 +513,8 @@ $twig = (new TwigContainer(null, OEGlobalsBag::getInstance()->getKernel()))->get
                     </div>
                 </form>
             <?php endif; ?>
+            <!--Clinical Co-Pilot (AI) launcher — opens the external sidecar in a new tab-->
+            <a class="btn btn-sm btn-outline-info my-1 mx-2" href="<?php echo attr(copilotLaunchUrl(null, (string)$session->get('authUser'))); ?>" title="<?php echo xla('Open the Clinical Co-Pilot (AI assistant) in a new tab'); ?>" rel="noopener" target="_blank"><i class="fa fa-robot mr-1"></i><?php echo xlt('Co-Pilot'); ?></a>
             <!--Below is the user data section that contains the user information and the attendant data-->
             <span id="userData" data-bind="template: {name: 'user-data-template', data: application_data}"></span>
             <?php
