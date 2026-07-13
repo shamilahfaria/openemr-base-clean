@@ -1,25 +1,36 @@
-"""Load / stress test — concurrent /health probes against the deployed sidecar.
+"""Load / stress test for the deployed sidecar.
 
-Records p50/p95/p99 latency and error rate at 10 and 50 concurrent users.
-Targets /health so the load test measures the SERVICE (routing, middleware,
-ASGI concurrency) without spending
-LLM tokens or requiring PHI — the /chat path shares the same request stack plus
-a bounded external call, so /health is the clean infra baseline.
+Two targets:
+
+* ``/health`` (default) — the infra baseline: routing, middleware, ASGI
+  concurrency, with no LLM tokens and no PHI.
+* ``/chat`` — the real agent path (POST + OAuth bearer). Each request is one
+  bounded LLM turn against a seeded patient, so it is **cost-aware by
+  construction**: a fresh ``session_id`` per request (single-turn, no history
+  growth) and small defaults (20 requests over 2/5 concurrency). Raise them
+  deliberately with ``--requests`` / ``--concurrency``.
+
+Both record p50/p95/p99 latency, throughput, and error rate per concurrency
+level. Results write to ``RESULTS.md`` (health) or ``RESULTS-chat.md`` (chat).
 
 Usage:
   python -m loadtest.run --url https://copilot-early-sub.up.railway.app --requests 200
-Writes loadtest/RESULTS.md.
+  python -m loadtest.run --url https://copilot-early-sub.up.railway.app --path /chat \\
+      --token "$BEARER" --patient a2390997-1e8c-4c41-99f5-676ad433d365
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import time
+import uuid
 from pathlib import Path
 
 import httpx
 
-RESULTS = Path(__file__).resolve().parent / "RESULTS.md"
+HERE = Path(__file__).resolve().parent
+RESULTS = HERE / "RESULTS.md"
+DEFAULT_MESSAGE = "What is this patient's code status?"
 
 
 def percentile(values: list[float], pct: float) -> float:
@@ -30,27 +41,52 @@ def percentile(values: list[float], pct: float) -> float:
     return ordered[idx]
 
 
-async def worker(client, url, path, n, latencies, errors):
+def chat_headers(token: str, clinician: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-Clinician-Id": clinician,
+        "Content-Type": "application/json",
+    }
+
+
+async def _issue(client: httpx.AsyncClient, url: str, path: str, chat_ctx: dict | None):
+    """One request: POST /chat (fresh session) when chat_ctx is set, else GET."""
+    if chat_ctx is not None:
+        body = {
+            "patient_id": chat_ctx["patient"],
+            "message": chat_ctx["message"],
+            "session_id": f"load-{uuid.uuid4().hex[:12]}",
+        }
+        return await client.post(url + path, headers=chat_ctx["headers"], json=body)
+    return await client.get(url + path)
+
+
+async def worker(client, url, path, n, latencies, errors, chat_ctx, error_status):
     for _ in range(n):
         start = time.perf_counter()
         try:
-            resp = await client.get(url + path)
+            resp = await _issue(client, url, path, chat_ctx)
             latencies.append((time.perf_counter() - start) * 1000)
-            if resp.status_code >= 500:
+            if resp.status_code >= error_status:
                 errors.append(1)
         except Exception:
             latencies.append((time.perf_counter() - start) * 1000)
             errors.append(1)
 
 
-async def scenario(url, path, concurrency, total):
+async def scenario(
+    url, path, concurrency, total, *, chat_ctx=None, error_status=500, transport=None
+):
     per = max(1, total // concurrency)
     latencies: list[float] = []
     errors: list[int] = []
-    async with httpx.AsyncClient(timeout=30, verify=True) as client:
+    async with httpx.AsyncClient(timeout=60, verify=True, transport=transport) as client:
         wall_start = time.perf_counter()
         await asyncio.gather(
-            *[worker(client, url, path, per, latencies, errors) for _ in range(concurrency)]
+            *[
+                worker(client, url, path, per, latencies, errors, chat_ctx, error_status)
+                for _ in range(concurrency)
+            ]
         )
         wall = time.perf_counter() - wall_start
     count = len(latencies)
@@ -65,24 +101,8 @@ async def scenario(url, path, concurrency, total):
     }
 
 
-async def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--url", required=True)
-    parser.add_argument("--path", default="/health")
-    parser.add_argument("--requests", type=int, default=200)
-    args = parser.parse_args()
-
-    rows = []
-    for concurrency in (10, 50):
-        result = await scenario(args.url, args.path, concurrency, args.requests)
-        rows.append(result)
-        print(result)
-
+def _table(rows: list[dict]) -> list[str]:
     lines = [
-        "# Load Test Results — Clinical Co-Pilot",
-        "",
-        f"Target `{args.url}{args.path}` · {args.requests} requests per scenario.",
-        "",
         "| Concurrency | Requests | Throughput (rps) | Error % | p50 (ms) | p95 (ms) | p99 (ms) |",
         "|-------------|----------|------------------|---------|----------|----------|----------|",
     ]
@@ -91,16 +111,76 @@ async def main():
             f"| {r['concurrency']} | {r['requests']} | {r['throughput_rps']} | "
             f"{r['error_rate_pct']} | {r['p50_ms']} | {r['p95_ms']} | {r['p99_ms']} |"
         )
-    lines += [
+    return lines
+
+
+async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--url", required=True)
+    parser.add_argument("--path", default="/health")
+    parser.add_argument("--requests", type=int, default=None, help="per scenario")
+    parser.add_argument("--concurrency", default=None, help="comma-separated levels")
+    parser.add_argument("--token", default="", help="OAuth bearer (required for /chat)")
+    parser.add_argument("--clinician", default="nurse-maria")
+    parser.add_argument("--patient", default="", help="patient uuid (required for /chat)")
+    parser.add_argument("--message", default=DEFAULT_MESSAGE)
+    parser.add_argument("--out", default="")
+    args = parser.parse_args()
+
+    is_chat = args.path.rstrip("/") == "/chat"
+    if is_chat and not (args.token and args.patient):
+        parser.error("--token and --patient are required for a /chat load test")
+
+    total = args.requests if args.requests is not None else (20 if is_chat else 200)
+    levels = [int(c) for c in (args.concurrency.split(",") if args.concurrency
+                               else (["2", "5"] if is_chat else ["10", "50"]))]
+
+    chat_ctx = None
+    error_status = 500
+    if is_chat:
+        # Every non-2xx /chat is a failed turn (auth/session/agent), not just 5xx.
+        error_status = 400
+        chat_ctx = {
+            "patient": args.patient,
+            "message": args.message,
+            "headers": chat_headers(args.token, args.clinician),
+        }
+        print(f"⚠ /chat mode issues real LLM turns: up to {total * len(levels)} total. "
+              "Bounded by --requests/--concurrency.")
+
+    rows = []
+    for concurrency in levels:
+        result = await scenario(
+            args.url, args.path, concurrency, total,
+            chat_ctx=chat_ctx, error_status=error_status,
+        )
+        rows.append(result)
+        print(result)
+
+    out = Path(args.out) if args.out else (HERE / "RESULTS-chat.md" if is_chat else RESULTS)
+    lines = [
+        "# Load Test Results — Clinical Co-Pilot",
         "",
-        "`/health` is the infra baseline (no LLM tokens, no PHI). The `/chat` path",
-        "adds one bounded LLM call + FHIR reads on top of this same request stack;",
-        "its latency is dominated by the model, tracked per-request in telemetry",
-        "(p50/p95 in the observability dashboard).",
+        f"Target `{args.url}{args.path}` · {total} requests per scenario.",
+        "",
+        *_table(rows),
         "",
     ]
-    RESULTS.write_text("\n".join(lines))
-    print(f"\n-> {RESULTS}")
+    if is_chat:
+        lines += [
+            "The `/chat` path is one bounded LLM turn per request (fresh session, no",
+            "history growth). Latency is dominated by the model + FHIR reads; error %",
+            "counts any non-2xx turn (auth/session/agent). Per-turn token cost is",
+            "captured in telemetry and reconciled in COST_ANALYSIS.md.",
+        ]
+    else:
+        lines += [
+            "`/health` is the infra baseline (no LLM tokens, no PHI). The `/chat` path",
+            "adds one bounded LLM call + FHIR reads on the same request stack — load-test",
+            "it directly with `--path /chat --token ... --patient ...`.",
+        ]
+    out.write_text("\n".join(lines) + "\n")
+    print(f"\n-> {out}")
 
 
 if __name__ == "__main__":
