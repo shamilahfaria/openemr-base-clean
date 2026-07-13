@@ -1,5 +1,5 @@
 """
-TDD (Red) suite — build step 3b: the get_patient_summary tool.
+The get_patient_summary tool.
 
 Contract under test (app/tools/patient_summary.py):
   * aggregates Patient/{id} + active Conditions + recent Encounters

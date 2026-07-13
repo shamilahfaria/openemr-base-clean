@@ -1,5 +1,5 @@
 """
-TDD (Red) suite — build step 3a: the read-only FHIR client.
+The read-only FHIR client.
 
 Contract under test (app/fhir/client.py):
   * bearer token forwarded as ``Authorization: Bearer <token>``

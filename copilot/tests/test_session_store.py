@@ -1,4 +1,4 @@
-"""TDD (Red) suite — build step 6a: the in-memory session store."""
+"""The in-memory session store."""
 from __future__ import annotations
 
 import pytest

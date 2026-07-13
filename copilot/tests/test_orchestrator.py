@@ -1,5 +1,5 @@
 """
-TDD (Red) suite — build step 6b: the agent orchestrator (tool-use loop).
+The agent orchestrator (tool-use loop).
 
 The Anthropic client, tool registry, and session store are all injected fakes:
 these tests pin loop behavior, scope enforcement, and failure semantics — no

@@ -1,5 +1,5 @@
 """
-TDD (Red) suite — build step 4: the Patient Scope Guard (AUDIT S1).
+The Patient Scope Guard (AUDIT S1).
 
 OpenEMR enforces no patient-level authorization for a clinical-user token, so
 this guard IS the patient-level trust boundary. These tests pin:

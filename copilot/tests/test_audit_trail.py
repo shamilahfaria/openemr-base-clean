@@ -1,5 +1,5 @@
 """
-TDD (Red) suite — build step 7b: the HIPAA audit trail (AUDIT C2).
+The HIPAA audit trail (AUDIT C2).
 
 Pins: clinician-attributed immutable events, PHI manifest as source_ids only
 (never record bodies), append-only trail surface, caller-supplied timestamps,

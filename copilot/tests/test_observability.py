@@ -1,5 +1,5 @@
 """
-TDD (Red) suite — build step 10: observability.
+Observability.
 
 Made concrete by the live smoke test: an invalid Anthropic key produced a
 silent fallback with zero server-side trace. Pins: PHI-free telemetry exported

@@ -3,9 +3,9 @@
 PHI-free by construction: the registry stores only what TurnTelemetry carries
 (correlation id, outcome, tool names, latency, tokens, cost) plus per-request
 status counts from the middleware — never a patient id, clinician id, message,
-or answer. It backs the assignment's dashboard requirement (request count,
-error count, p50/p95 latency, tool calls, verification pass/fail) without an
-external service, so the deployed instance is self-contained.
+or answer. It powers the live dashboard (request count, error count, p50/p95
+latency, tool calls, verification pass/fail) without an external service, so the
+deployed instance is self-contained.
 
 State is per-process and resets on deploy; alert thresholds over these
 numbers are documented in copilot/OBSERVABILITY.md.

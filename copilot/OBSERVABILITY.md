@@ -33,7 +33,7 @@ audit trail, every log line, and every Langfuse trace for the turn):
    deliberately separate from telemetry, which is PHI-free by construction
    (no patient id, no message text; enforced by eval I9-telemetry-phi-free).
 
-The dashboard answers the assignment's four minimum questions: what did the
+The dashboard answers the four core operational questions: what did the
 agent do on a request (recent-turns row + log trace by correlation id), how
 long did each step take (latency percentiles + per-turn latency), did tools
 fail (fallback/denied outcomes, tool counts vs. turns), and how many tokens at

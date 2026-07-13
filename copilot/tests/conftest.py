@@ -53,9 +53,9 @@ def app():
 
 @pytest.fixture
 def client(app):
-    # raise_server_exceptions=False so an unimplemented stub surfaces as an HTTP
-    # 500 response (a clean assertion failure) rather than propagating during the
-    # Red stage. Assert on status_code before calling .json().
+    # raise_server_exceptions=False so a handler error surfaces as an HTTP 500
+    # response to assert on, rather than propagating into the test. Assert on
+    # status_code before calling .json().
     return TestClient(app, raise_server_exceptions=False)
 
 

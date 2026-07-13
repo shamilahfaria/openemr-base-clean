@@ -1,8 +1,8 @@
 """Load / stress test — concurrent /health probes against the deployed sidecar.
 
-Records p50/p95/p99 latency and error rate at 10 and 50 concurrent users, per
-the assignment's engineering requirements. Targets /health so the load test
-measures the SERVICE (routing, middleware, ASGI concurrency) without spending
+Records p50/p95/p99 latency and error rate at 10 and 50 concurrent users.
+Targets /health so the load test measures the SERVICE (routing, middleware,
+ASGI concurrency) without spending
 LLM tokens or requiring PHI — the /chat path shares the same request stack plus
 a bounded external call, so /health is the clean infra baseline.
 

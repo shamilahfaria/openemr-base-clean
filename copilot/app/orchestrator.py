@@ -16,7 +16,7 @@ Rules the tests pin:
     are appended to the session after the turn.
   * Fail closed at entry: blank message or bearer token -> ValueError before
     any Claude call.
-  * Anthropic API errors propagate — fallback logic (build step 8) owns them.
+  * Anthropic API errors propagate — the caller's fallback path owns them.
 """
 from __future__ import annotations
 

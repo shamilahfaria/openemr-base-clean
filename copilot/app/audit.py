@@ -50,7 +50,7 @@ class AuditEvent(BaseModel):
 
 
 class AuditTrail:
-    """Append-only, in-memory for MVP (swap for WORM/SIEM at scale)."""
+    """Append-only, in-memory (swap for a durable WORM/SIEM store at scale)."""
 
     def __init__(self):
         self._events: list[AuditEvent] = []

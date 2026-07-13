@@ -1,5 +1,5 @@
 """
-TDD (Red) suite — build step 7: the deterministic verification layer.
+The deterministic verification layer.
 
 Pins the two-check contract: source attribution (uncited/unknown -> withheld,
 [general] -> labeled, markers stripped, citations structured) and clinical

@@ -1,5 +1,5 @@
 """
-TDD (Red) suite — build step 8: POST /chat assembly + fallback.
+POST /chat assembly + fallback.
 
 Fake orchestrator + fallback provider; REAL verifier and audit trail — this is
 the integration seam, so the deterministic pieces run for real.

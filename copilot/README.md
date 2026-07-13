@@ -10,8 +10,8 @@ Langfuse tracing turns on when `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`
 request's correlation id. Without keys the other telemetry channels are
 unaffected. See [`OBSERVABILITY.md`](OBSERVABILITY.md).
 
-See the root docs: [`../ARCHITECTURE.md`](../ARCHITECTURE.md),
-[`../USER.md`](../USER.md), [`../AUDIT.md`](../AUDIT.md).
+See the design docs: [`ARCHITECTURE.md`](../AgentForge/ARCHITECTURE.md),
+[`USER.md`](../AgentForge/USER.md), [`AUDIT.md`](../AgentForge/AUDIT.md).
 
 ## Run locally (verified working)
 

@@ -1,9 +1,9 @@
 # Eval Results — Clinical Co-Pilot
 
-Dataset `2026.07.0` · rules `2026.07.0` · run 2026-07-12 18:27 UTC
+Dataset `2026.07.0` · rules `2026.07.0` · run 2026-07-13 14:26 UTC
 
 **16/16 passing.** Each case documents the failure mode it guards
-(assignment: boundaries, invariants, regression risks — no happy-path-only suites).
+(boundaries, invariants, and regression risks — not a happy-path-only suite).
 
 | Case | Category | Result | Failure mode guarded |
 |------|----------|--------|----------------------|

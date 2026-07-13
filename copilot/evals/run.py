@@ -208,7 +208,7 @@ def main() -> int:
         f"Dataset `{dataset['dataset_version']}` · rules `{RULES.version}` · run {now}",
         "",
         f"**{total - failures}/{total} passing.** Each case documents the failure mode it guards",
-        "(assignment: boundaries, invariants, regression risks — no happy-path-only suites).",
+        "(boundaries, invariants, and regression risks — not a happy-path-only suite).",
         "",
         "| Case | Category | Result | Failure mode guarded |",
         "|------|----------|--------|----------------------|",

@@ -1,5 +1,5 @@
 """
-TDD (Red) suite — build step 9: production wiring.
+Production wiring.
 
 Pins: env config (fail closed on missing required settings), the committed
 clinical-rules artifact loads, the tool registry covers the full tool surface,
