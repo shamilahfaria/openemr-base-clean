@@ -6,9 +6,10 @@ CONSTRUCTION — correlation id, outcome, tool names, verification stats,
 latency, model. No patient id. No message text. The patient-linked record
 lives in the HIPAA audit trail (app/audit.py), inside the trust boundary.
 
-``LoggingExporter`` emits structured logs (the MVP backend); a Langfuse
-exporter drops in behind the same ``TelemetryExporter`` seam once keys exist.
-Export failures must never break a request.
+``LoggingExporter`` emits structured logs; ``MetricsExporter`` feeds the live
+dashboard; ``LangfuseExporter`` (app/langfuse_export.py) sends a durable trace
+per turn. All three sit behind this ``TelemetryExporter`` seam and are fanned
+out by ``CompositeExporter``. Export failures must never break a request.
 """
 from __future__ import annotations
 

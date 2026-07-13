@@ -11,12 +11,14 @@ persist across requests. ``reset()`` clears them (tests only).
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from .audit import AuditTrail
 from .chat import FallbackFn
 from .config import load_settings
 from .fhir.client import FhirClient
+from .langfuse_export import LangfuseExporter, build_langfuse_sink
 from .metrics import MetricsExporter, get_registry
 from .observability import CompositeExporter, LoggingExporter
 from .orchestrator import Orchestrator
@@ -146,10 +148,29 @@ def get_fallback_provider() -> FallbackFn:
 
 def get_telemetry_exporter() -> CompositeExporter:
     if "telemetry" not in _cache:
-        _cache["telemetry"] = CompositeExporter(
-            [LoggingExporter(), MetricsExporter(get_registry())]
-        )
+        backends: list[Any] = [LoggingExporter(), MetricsExporter(get_registry())]
+        # Langfuse joins the fan-out only when its keys are configured; without
+        # them telemetry still reaches the log stream and the dashboard.
+        sink = build_langfuse_sink()
+        if sink is not None:
+            _cache["langfuse_sink"] = sink
+            backends.append(LangfuseExporter(sink))
+        _cache["telemetry"] = CompositeExporter(backends)
     return _cache["telemetry"]
+
+
+def flush_telemetry() -> None:
+    """Flush any buffered Langfuse traces (called on app shutdown)."""
+    sink = _cache.get("langfuse_sink")
+    if sink is None:
+        return
+    try:
+        sink.flush()
+    except Exception as exc:
+        # Shutdown-time best effort; never raise from a lifespan handler.
+        logging.getLogger(__name__).warning(
+            "langfuse flush failed: %s", type(exc).__name__
+        )
 
 
 def reset() -> None:

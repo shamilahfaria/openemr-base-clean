@@ -1,9 +1,9 @@
 # Observability — Clinical Co-Pilot
 
-You cannot improve what you cannot see. This service is observable three ways,
+You cannot improve what you cannot see. This service is observable four ways,
 all keyed by the same **correlation ID** (minted or propagated per request by
 `app/middleware.py`, echoed as `X-Correlation-ID`, present in the chat UI, the
-audit trail, and every log line for the turn):
+audit trail, every log line, and every Langfuse trace for the turn):
 
 1. **Structured logs (stdout).** Every completed turn emits one
    `turn_telemetry {...json...}` INFO line (`app/observability.py`,
@@ -18,7 +18,17 @@ audit trail, and every log line for the turn):
    warning totals, per-tool call counts, token and dollar totals, cost per
    turn, and the last 25 turns. Live at
    `https://copilot-early-sub.up.railway.app/dashboard`.
-3. **HIPAA audit trail.** PHI-bearing disclosure records (which clinician saw
+3. **Langfuse traces (durable, multi-instance).** Every turn is exported as one
+   Langfuse trace (`app/langfuse_export.py`), keyed by the correlation id and
+   carrying the same PHI-free `TurnTelemetry` (outcome, tools, verification
+   stats, latency, model, tokens, cost) — never a prompt, message, or answer, so
+   nothing PHI-bearing leaves the trust boundary. This is the durable,
+   cross-instance record the in-process dashboard cannot be (it resets on
+   deploy). Activated by setting `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`
+   (and optional `LANGFUSE_HOST`, default `https://cloud.langfuse.com`); without
+   keys the backend is simply not built and the other three channels are
+   unaffected. Buffered traces are flushed on graceful shutdown.
+4. **HIPAA audit trail.** PHI-bearing disclosure records (which clinician saw
    what for which patient) stay inside the trust boundary in `app/audit.py` —
    deliberately separate from telemetry, which is PHI-free by construction
    (no patient id, no message text; enforced by eval I9-telemetry-phi-free).
@@ -32,8 +42,8 @@ same numbers that feed `COST_ANALYSIS.md`).
 
 `/metrics` state is per-process and resets on deploy. That is an accepted
 limitation at this scale (single Railway instance); the structured log stream
-is the durable record, and a Langfuse exporter drops in behind the same
-`TelemetryExporter` seam when multi-instance aggregation is needed.
+and the Langfuse trace stream are the durable records that survive a deploy and
+aggregate across instances.
 
 ## Alert definitions
 

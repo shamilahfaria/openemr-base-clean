@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 
@@ -27,9 +28,16 @@ def configure_logging() -> None:
     root.setLevel(logging.INFO)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Flush any buffered Langfuse traces so a graceful shutdown loses nothing.
+    wiring.flush_telemetry()
+
+
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="Clinical Co-Pilot Sidecar")
+    app = FastAPI(title="Clinical Co-Pilot Sidecar", lifespan=lifespan)
     app.add_middleware(CorrelationIdMiddleware)
 
     @app.middleware("http")

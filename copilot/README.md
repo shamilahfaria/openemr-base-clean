@@ -2,7 +2,13 @@
 
 Read-only, multi-turn AI agent for OpenEMR (hospice nurse). FastAPI service;
 reads patient data via OpenEMR FHIR with OAuth2 passthrough; deterministic
-verification; safe fallback; PHI-free telemetry + HIPAA audit trail.
+verification; safe fallback; PHI-free telemetry (stdout logs, live dashboard,
+and Langfuse traces) + HIPAA audit trail.
+
+Langfuse tracing turns on when `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`
+(optional `LANGFUSE_HOST`) are set; each turn is one PHI-free trace keyed by the
+request's correlation id. Without keys the other telemetry channels are
+unaffected. See [`OBSERVABILITY.md`](OBSERVABILITY.md).
 
 See the root docs: [`../ARCHITECTURE.md`](../ARCHITECTURE.md),
 [`../USER.md`](../USER.md), [`../AUDIT.md`](../AUDIT.md).
