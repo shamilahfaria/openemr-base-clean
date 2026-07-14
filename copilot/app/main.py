@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 
+from . import ask as ask_module
 from . import chat, wiring
 from .demo_token import router as demo_token_router
 from .documents import routes as doc_routes
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(demo_token_router)
     app.include_router(doc_routes.router)
+    app.include_router(ask_module.router)
     # Bind the /chat provider seams to production wiring (tests re-override).
     app.dependency_overrides[chat.get_orchestrator] = wiring.get_orchestrator
     app.dependency_overrides[chat.get_verifier] = wiring.get_verifier

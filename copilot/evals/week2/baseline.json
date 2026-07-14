@@ -1,5 +1,5 @@
 {
-  "note": "Per-category pass thresholds (FR-6.3). The gate fails if any category is below its threshold, or — once a baseline is recorded — regresses more than 5% below it. Regenerate `baseline` with `python -m evals.week2.runner --update-baseline` when the suite is green.",
+  "note": "Per-category pass thresholds (FR-6.3). The gate fails if any category is below its threshold, or \u2014 once a baseline is recorded \u2014 regresses more than 5% below it. Regenerate `baseline` with `python -m evals.week2.runner --update-baseline` when the suite is green.",
   "thresholds": {
     "schema_valid": 1.0,
     "citation_present": 1.0,
@@ -7,5 +7,11 @@
     "safe_refusal": 1.0,
     "no_phi_in_logs": 1.0
   },
-  "baseline": null
+  "baseline": {
+    "schema_valid": 1.0,
+    "citation_present": 1.0,
+    "factually_consistent": 1.0,
+    "safe_refusal": 1.0,
+    "no_phi_in_logs": 1.0
+  }
 }

@@ -28,11 +28,13 @@ def schema_valid(extraction: dict) -> bool:
 
 
 def citation_present(items: list[dict]) -> bool:
-    """Every clinical item must carry a citation resolvable to a source id."""
+    """Every clinical item must resolve to a citation with a source id — whether
+    the item *contains* a citation (an extraction result) or *is* one (an answer
+    citation)."""
     if not items:
         return False
     for item in items:
-        citation = item.get("citation") or {}
+        citation = item.get("citation") or item
         if not citation.get("source_id"):
             return False
     return True
