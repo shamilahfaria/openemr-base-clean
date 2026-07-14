@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 
 from . import chat, wiring
 from .demo_token import router as demo_token_router
+from .documents import routes as doc_routes
 from .metrics import get_registry
 from .middleware import CorrelationIdMiddleware
 from .routes import router
@@ -50,12 +51,15 @@ def create_app() -> FastAPI:
     app.include_router(router)
     app.include_router(chat.router)
     app.include_router(demo_token_router)
+    app.include_router(doc_routes.router)
     # Bind the /chat provider seams to production wiring (tests re-override).
     app.dependency_overrides[chat.get_orchestrator] = wiring.get_orchestrator
     app.dependency_overrides[chat.get_verifier] = wiring.get_verifier
     app.dependency_overrides[chat.get_audit_trail] = wiring.get_audit_trail
     app.dependency_overrides[chat.get_fallback_provider] = wiring.get_fallback_provider
     app.dependency_overrides[chat.get_telemetry_exporter] = wiring.get_telemetry_exporter
+    app.dependency_overrides[doc_routes.get_document_extractor] = wiring.get_document_extractor
+    app.dependency_overrides[doc_routes.get_document_store] = wiring.get_document_store
     return app
 
 

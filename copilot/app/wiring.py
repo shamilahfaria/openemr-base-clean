@@ -17,6 +17,8 @@ from typing import Any
 from .audit import AuditTrail
 from .chat import FallbackFn
 from .config import load_settings
+from .documents.extractor import VisionExtractor
+from .documents.ingest import InMemoryDocumentStore
 from .fhir.client import FhirClient
 from .langfuse_export import LangfuseExporter, build_langfuse_sink
 from .metrics import MetricsExporter, get_registry
@@ -157,6 +159,22 @@ def get_telemetry_exporter() -> CompositeExporter:
             backends.append(LangfuseExporter(sink))
         _cache["telemetry"] = CompositeExporter(backends)
     return _cache["telemetry"]
+
+
+def get_document_store() -> InMemoryDocumentStore:
+    if "doc_store" not in _cache:
+        _cache["doc_store"] = InMemoryDocumentStore()
+    return _cache["doc_store"]
+
+
+def get_document_extractor() -> VisionExtractor:
+    if "doc_extractor" not in _cache:
+        settings = load_settings()
+        _cache["doc_extractor"] = VisionExtractor(
+            build_anthropic_client(settings.anthropic_api_key),
+            model=settings.anthropic_model,
+        )
+    return _cache["doc_extractor"]
 
 
 def flush_telemetry() -> None:
