@@ -59,9 +59,18 @@ OpenEMR's own UI also links straight here (top-nav launcher + a per-patient
 ## Tests & evals
 
 ```bash
-pytest                 # 242 tests, ~1s (strict TDD, LLM faked)
+pytest                 # 286 tests, ~1s (LLM faked)
 python -m evals.run    # 16/16 boundary/invariant/regression evals -> evals/RESULTS.md
-python -m loadtest.run --url http://localhost:8055 --requests 500   # -> loadtest/RESULTS.md
+python -m loadtest.run --url http://localhost:8055 --requests 500        # infra -> loadtest/RESULTS.md
+python -m loadtest.run --url URL --path /chat --token T --patient UUID   # agent path -> loadtest/RESULTS-chat.md
+```
+
+The faked suite can't catch the model skipping a tool (a real turn silently
+falling back). The **live-LLM eval** runs real turns against a deployed agent and
+asserts each is verified with citations (spends a few LLM turns; needs a bearer):
+
+```bash
+python -m evals.live --url https://copilot-early-sub.up.railway.app --token "$BEARER"
 ```
 
 ## Artifacts

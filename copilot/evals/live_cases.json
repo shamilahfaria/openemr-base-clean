@@ -1,0 +1,24 @@
+{
+  "_comment": "Live-LLM eval cases. `patient` is a seeded OpenEMR FHIR uuid on the target deployment; override --cases for a different environment. Hard assertions: degraded=false + citations present. expect_any is a soft topical check (any one substring, case-insensitive).",
+  "cases": [
+    {
+      "name": "code-status-grounded",
+      "patient": "a2390997-1e8c-4c41-99f5-676ad433d365",
+      "message": "What is this patient's code status and goals of care?",
+      "expect_any": ["resuscitat", "dnr", "comfort", "full code", "cpr"],
+      "require_citations": true
+    },
+    {
+      "name": "medications-grounded",
+      "patient": "a2390997-1e8c-4c41-99f5-676ad433d365",
+      "message": "What are this patient's active medications?",
+      "require_citations": true
+    },
+    {
+      "name": "allergies-grounded",
+      "patient": "a2390997-1e8c-4c41-99f5-676ad433d365",
+      "message": "Does this patient have any documented allergies?",
+      "require_citations": true
+    }
+  ]
+}
