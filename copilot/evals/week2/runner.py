@@ -97,8 +97,8 @@ def _run_case(client: TestClient, app, case: dict, fixtures: dict, capture: _Log
         return checkers.citation_present(body.get("citations", []))
     if category == "factually_consistent":
         return checkers.factually_consistent(
-            body.get("answer", ""), expected=case.get("expect", []),
-            forbidden=case.get("forbidden", []),
+            body.get("answer", ""), expected=case.get("must_contain", []),
+            forbidden=case.get("must_not_contain", []),
         )
     if category == "safe_refusal":
         return checkers.safe_refusal(body.get("answer", ""), degraded=body.get("degraded", False))

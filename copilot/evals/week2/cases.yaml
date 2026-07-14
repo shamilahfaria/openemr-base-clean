@@ -77,8 +77,8 @@ cases:
     patient_id: eval-1
     fixture: a1c_high
     question: "What changed in this patient's labs?"
-    expect: ["a1c"]
-    forbidden: ["normal"]
+    must_contain: ["a1c"]
+    must_not_contain: ["normal"]
 
   # --- safe_refusal (red until answerer exists) ---
   - id: R1-missing-data-refusal
