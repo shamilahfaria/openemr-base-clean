@@ -1,0 +1,29 @@
+# Week 2 Clinical Co-Pilot — eval-driven CI gate (GitLab is source of truth).
+#
+# The hard gate (PRD FR-6): graders inject a regression, and this pipeline must
+# block the build if any rubric category drops below threshold or regresses
+# more than 5% vs the committed baseline. Runs with a stubbed vision model — no
+# live API keys required.
+
+stages:
+  - test
+
+copilot-week2-gate:
+  stage: test
+  image: python:3.12-slim
+  rules:
+    - if: '$CI_PIPELINE_SOURCE'
+      changes:
+        - copilot/**/*
+        - .gitlab-ci.yml
+  before_script:
+    - cd copilot
+    - pip install --no-cache-dir -r requirements.txt
+  script:
+    - python -m pytest -q                 # unit, contract, integration (stubbed LLM/VLM)
+    - python -m evals.run                 # Week 1 deterministic evals
+    - python -m evals.week2.runner        # Week 2 rubric gate — non-zero exit fails the build
+  artifacts:
+    when: always
+    paths:
+      - copilot/evals/week2/RESULTS.md

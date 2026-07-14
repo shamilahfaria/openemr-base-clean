@@ -1,0 +1,27 @@
+#!/bin/sh
+# Week 2 eval-driven pre-push gate (PRD FR-6.3).
+# Blocks the push if the copilot test suite or the Week 2 rubric gate fails,
+# so a regression never reaches the remote. Install once:
+#
+#   git config core.hooksPath .githooks
+#
+# Runs with a stubbed vision model — no API keys needed. Skip in an emergency
+# with `git push --no-verify` (do not make a habit of it).
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+if [ ! -d "$ROOT/copilot" ]; then
+    exit 0
+fi
+
+echo "pre-push: running copilot tests + Week 2 eval gate…"
+cd "$ROOT/copilot"
+
+PY="python3"
+if [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+fi
+
+"$PY" -m pytest -q
+"$PY" -m evals.week2.runner
+echo "pre-push: gate passed."

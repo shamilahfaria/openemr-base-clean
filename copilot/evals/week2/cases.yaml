@@ -1,0 +1,89 @@
+# Week 2 golden set (MVP subset — grows to 50 for Early sub).
+# Each case exercises exactly one boolean rubric category. `ingest` cases hit
+# POST /documents with a stubbed vision result; `ask` cases ingest then hit
+# POST /ask (the answerer). Fixtures are the drafts the stubbed model returns.
+
+fixtures:
+  a1c_high:
+    collection_date: "2026-07-01"
+    results:
+      - test_name: "Hemoglobin A1c"
+        value: "6.7"
+        unit: "%"
+        reference_range: "4.0-5.6"
+        abnormal_flag: high
+        confidence: high
+        page: 1
+        quote: "A1c 6.7 %"
+        bbox: {page: 1, x0: 0.10, y0: 0.20, x1: 0.40, y1: 0.25}
+      - test_name: "LDL Cholesterol"
+        value: "160"
+        unit: "mg/dL"
+        reference_range: "<100"
+        abnormal_flag: high
+        confidence: high
+        page: 1
+        quote: "LDL 160 mg/dL"
+        bbox: {page: 1, x0: 0.10, y0: 0.30, x1: 0.40, y1: 0.35}
+  ungrounded:
+    results:
+      - test_name: "TSH"
+        value: null
+        confidence: low
+        abnormal_flag: unknown
+        page: 1
+        quote: null
+  empty:
+    results: []
+
+cases:
+  # --- schema_valid (green now) ---
+  - id: E1-extraction-schema-valid
+    category: schema_valid
+    kind: ingest
+    patient_id: eval-1
+    fixture: a1c_high
+  - id: E2-ungrounded-field-visible
+    category: schema_valid
+    kind: ingest
+    patient_id: eval-2
+    fixture: ungrounded
+
+  # --- citation_present (partial red: ingest green, ask red) ---
+  - id: C1-extraction-cited
+    category: citation_present
+    kind: ingest
+    patient_id: eval-1
+    fixture: a1c_high
+  - id: C2-answer-cites-source
+    category: citation_present
+    kind: ask
+    patient_id: eval-1
+    fixture: a1c_high
+    question: "What changed in this patient's labs?"
+
+  # --- no_phi_in_logs (green now) ---
+  - id: P1-ingest-no-phi-in-logs
+    category: no_phi_in_logs
+    kind: ingest
+    patient_id: eval-1
+    fixture: a1c_high
+    phi_values: ["6.7", "160", "A1c 6.7 %", "LDL 160 mg/dL"]
+
+  # --- factually_consistent (red until answerer exists) ---
+  - id: A1-what-changed-is-grounded
+    category: factually_consistent
+    kind: ask
+    patient_id: eval-1
+    fixture: a1c_high
+    question: "What changed in this patient's labs?"
+    expect: ["a1c"]
+    forbidden: ["normal"]
+
+  # --- safe_refusal (red until answerer exists) ---
+  - id: R1-missing-data-refusal
+    category: safe_refusal
+    kind: ask
+    patient_id: eval-empty
+    fixture: empty
+    question: "What is this patient's latest cholesterol?"
