@@ -5,6 +5,15 @@ reads patient data via OpenEMR FHIR with OAuth2 passthrough; deterministic
 verification; safe fallback; PHI-free telemetry (stdout logs, live dashboard,
 and Langfuse traces) + HIPAA audit trail.
 
+Week 2 adds the **multimodal document workflow**: ingest two document types
+(`lab_pdf` and `intake_form`) through Claude vision into strict, citation-
+stamped schemas (`POST /documents`), then answer questions over the extracted
+facts via a LangGraph supervisor + two workers with logged handoffs
+(`POST /ask`). The evidence worker does **hybrid RAG** over a bundled guideline
+corpus — BM25 keyword + dense hashed-TF-IDF retrieval, RRF-fused, reranked —
+with per-hit scoring provenance in the response. UI at `/ui/documents`;
+behaviour is protected by a 50-case eval gate (`evals/week2/`).
+
 Langfuse tracing turns on when `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`
 (optional `LANGFUSE_HOST`) are set; each turn is one PHI-free trace keyed by the
 request's correlation id. Without keys the other telemetry channels are
@@ -25,8 +34,8 @@ export ANTHROPIC_API_KEY=sk-ant-...
 uvicorn app.main:app --port 8055
 ```
 
-- Chat UI: http://localhost:8055/ui
-- `GET /health` · `GET /ready` · `POST /chat`
+- Chat UI: http://localhost:8055/ui · Documents UI: http://localhost:8055/ui/documents
+- `GET /health` · `GET /ready` · `POST /chat` · `POST /documents` · `POST /ask`
 
 ## One-click demo token (removes the manual OAuth dance)
 
@@ -60,8 +69,9 @@ OpenEMR's own UI also links straight here (top-nav launcher + a per-patient
 ## Tests & evals
 
 ```bash
-pytest                 # 286 tests, ~1s (LLM faked)
-python -m evals.run    # 16/16 boundary/invariant/regression evals -> evals/RESULTS.md
+pytest                        # 327 tests, ~1s (LLM faked)
+python -m evals.run           # 16/16 boundary/invariant/regression evals -> evals/RESULTS.md
+python -m evals.week2.runner  # Week 2 gate: 50-case golden set, 5 boolean rubrics -> evals/week2/RESULTS.md
 python -m loadtest.run --url http://localhost:8055 --requests 500        # infra -> loadtest/RESULTS.md
 python -m loadtest.run --url URL --path /chat --token T --patient UUID   # agent path -> loadtest/RESULTS-chat.md
 ```
