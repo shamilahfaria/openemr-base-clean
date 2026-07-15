@@ -2,3 +2,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.pyc
+
+# demo assets (kept local, not committed)
+WEEK2_DEMO.md
+fixtures/sample_lab_report.pdf
+fixtures/make_sample_lab.py
