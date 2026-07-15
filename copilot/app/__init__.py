@@ -1,1 +1,1 @@
-"""Clinical Co-Pilot sidecar (FastAPI). See AgentForge/ARCHITECTURE.md for the design."""
+"""Clinical Co-Pilot sidecar (FastAPI). See ARCHITECTURE.md at the repo root for the design."""
