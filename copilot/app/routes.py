@@ -31,6 +31,12 @@ async def ui() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@router.get("/ui/documents")
+async def ui_documents() -> FileResponse:
+    """The document workflow panel (thin client for /documents + /ask)."""
+    return FileResponse(STATIC_DIR / "documents.html")
+
+
 @router.get("/metrics")
 async def metrics() -> dict:
     """PHI-free aggregate metrics for the current process (JSON)."""
