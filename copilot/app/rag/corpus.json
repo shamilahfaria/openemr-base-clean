@@ -1,0 +1,188 @@
+{
+  "version": "2026-07-15",
+  "description": "Demo guideline corpus for hybrid retrieval. Paraphrased, general-knowledge clinical guidance for grounding demo answers — NOT a clinical decision-support source.",
+  "chunks": [
+    {
+      "id": "ada-a1c-target",
+      "title": "Glycemic targets in adults with diabetes",
+      "section": "Diabetes",
+      "source": "ADA Standards of Care (paraphrase)",
+      "text": "A reasonable hemoglobin A1c goal for many nonpregnant adults with diabetes is below 7%. Less stringent goals (below 8%) may be appropriate for patients with limited life expectancy, hypoglycemia risk, or extensive comorbidities. Reassess glycemic status at least twice yearly when stable."
+    },
+    {
+      "id": "ada-a1c-diagnosis",
+      "title": "A1c thresholds for prediabetes and diabetes",
+      "section": "Diabetes",
+      "source": "ADA Standards of Care (paraphrase)",
+      "text": "A hemoglobin A1c of 5.7 to 6.4 percent indicates prediabetes; a value of 6.5 percent or higher on two occasions is diagnostic of diabetes. Patients with prediabetes should be counseled on weight management, physical activity, and periodic retesting."
+    },
+    {
+      "id": "lipid-ldl-elevated",
+      "title": "Management of elevated LDL cholesterol",
+      "section": "Lipids",
+      "source": "ACC/AHA cholesterol guideline (paraphrase)",
+      "text": "For adults with LDL cholesterol of 160 mg/dL or higher, clinicians should assess atherosclerotic cardiovascular disease risk and consider moderate- to high-intensity statin therapy alongside lifestyle modification. LDL of 190 mg/dL or above warrants high-intensity statin therapy regardless of calculated risk."
+    },
+    {
+      "id": "lipid-monitoring",
+      "title": "Lipid panel monitoring after starting therapy",
+      "section": "Lipids",
+      "source": "ACC/AHA cholesterol guideline (paraphrase)",
+      "text": "Repeat a fasting lipid panel 4 to 12 weeks after starting or adjusting statin therapy to assess adherence and response, then every 3 to 12 months as clinically indicated."
+    },
+    {
+      "id": "htn-thresholds",
+      "title": "Blood pressure classification and treatment thresholds",
+      "section": "Hypertension",
+      "source": "ACC/AHA blood pressure guideline (paraphrase)",
+      "text": "Blood pressure of 130-139/80-89 mmHg is stage 1 hypertension; 140/90 mmHg or higher is stage 2. Confirm elevated office readings with out-of-office measurements before diagnosis, and start antihypertensive medication for stage 2 or for stage 1 with elevated cardiovascular risk."
+    },
+    {
+      "id": "htn-lifestyle",
+      "title": "Lifestyle measures for elevated blood pressure",
+      "section": "Hypertension",
+      "source": "ACC/AHA blood pressure guideline (paraphrase)",
+      "text": "Weight loss, the DASH diet, sodium restriction, potassium supplementation through diet, regular aerobic exercise, and moderation of alcohol intake each lower systolic blood pressure and are recommended for all patients with elevated blood pressure."
+    },
+    {
+      "id": "thyroid-tsh-high",
+      "title": "Evaluation of an elevated TSH",
+      "section": "Thyroid",
+      "source": "ATA hypothyroidism guideline (paraphrase)",
+      "text": "An elevated TSH should be repeated with a free T4 to distinguish subclinical from overt hypothyroidism. Overt hypothyroidism (high TSH with low free T4) is treated with levothyroxine; subclinical disease is treated selectively based on degree of TSH elevation, symptoms, and antibody status."
+    },
+    {
+      "id": "thyroid-tsh-low",
+      "title": "Evaluation of a suppressed TSH",
+      "section": "Thyroid",
+      "source": "ATA hyperthyroidism guideline (paraphrase)",
+      "text": "A suppressed TSH warrants free T4 and T3 measurement. Overt hyperthyroidism should prompt evaluation of etiology (Graves disease, toxic nodular goiter, thyroiditis) with radioiodine uptake or TSH-receptor antibodies before definitive therapy."
+    },
+    {
+      "id": "ckd-egfr-staging",
+      "title": "Chronic kidney disease staging by eGFR",
+      "section": "Renal",
+      "source": "KDIGO CKD guideline (paraphrase)",
+      "text": "Chronic kidney disease is defined by an eGFR below 60 mL/min/1.73m2 or markers of kidney damage persisting over three months. A declining eGFR should be confirmed on repeat testing; refer to nephrology when eGFR falls below 30 or is rapidly declining."
+    },
+    {
+      "id": "ckd-albuminuria",
+      "title": "Albuminuria screening in kidney disease",
+      "section": "Renal",
+      "source": "KDIGO CKD guideline (paraphrase)",
+      "text": "Quantify albuminuria with a urine albumin-to-creatinine ratio in patients with diabetes, hypertension, or reduced eGFR. Persistent ratios of 30 mg/g or higher indicate kidney damage and favor ACE inhibitor or ARB therapy."
+    },
+    {
+      "id": "anemia-workup",
+      "title": "Initial workup of low hemoglobin",
+      "section": "Hematology",
+      "source": "Primary-care anemia review (paraphrase)",
+      "text": "A low hemoglobin should be characterized by mean corpuscular volume, reticulocyte count, iron studies including ferritin, vitamin B12, and folate. Microcytic anemia most often reflects iron deficiency, which requires identification of the underlying source of loss."
+    },
+    {
+      "id": "anemia-iron-deficiency",
+      "title": "Iron deficiency confirmation and treatment",
+      "section": "Hematology",
+      "source": "Primary-care anemia review (paraphrase)",
+      "text": "A ferritin below 30 ng/mL confirms iron deficiency. Oral iron on alternate days improves absorption and tolerability; recheck hemoglobin and ferritin after 4 to 8 weeks, and investigate gastrointestinal blood loss in men and postmenopausal women."
+    },
+    {
+      "id": "hyperkalemia",
+      "title": "Management of elevated potassium",
+      "section": "Electrolytes",
+      "source": "Nephrology consult reference (paraphrase)",
+      "text": "Confirm an unexpected high potassium with a repeat non-hemolyzed sample. Potassium above 6.0 mmol/L or any level with ECG changes is an emergency requiring cardiac monitoring, calcium stabilization, and shifting therapy. Review ACE inhibitors, ARBs, potassium-sparing diuretics, and NSAIDs."
+    },
+    {
+      "id": "hypokalemia",
+      "title": "Management of low potassium",
+      "section": "Electrolytes",
+      "source": "Nephrology consult reference (paraphrase)",
+      "text": "Low potassium is most commonly caused by diuretics or gastrointestinal losses. Replete orally when feasible, check magnesium (hypomagnesemia sustains refractory hypokalemia), and recheck levels within days for values below 3.0 mmol/L."
+    },
+    {
+      "id": "hyponatremia",
+      "title": "Approach to low sodium",
+      "section": "Electrolytes",
+      "source": "Hyponatremia practice guideline (paraphrase)",
+      "text": "Evaluate low sodium with serum and urine osmolality and volume status; review thiazide diuretics, SSRIs, and other culprit medications. Correct chronic hyponatremia slowly — no more than 8 to 10 mmol/L in 24 hours — to avoid osmotic demyelination."
+    },
+    {
+      "id": "liver-alt-elevated",
+      "title": "Evaluation of elevated liver enzymes",
+      "section": "Hepatology",
+      "source": "ACG liver chemistry guideline (paraphrase)",
+      "text": "Persistently elevated ALT or AST should prompt review of alcohol use, hepatotoxic medications, and metabolic risk factors, plus testing for viral hepatitis B and C and hepatic steatosis. Values more than five times the upper limit warrant expedited evaluation."
+    },
+    {
+      "id": "troponin-elevated",
+      "title": "Interpretation of an elevated troponin",
+      "section": "Cardiology",
+      "source": "Universal definition of MI (paraphrase)",
+      "text": "An elevated troponin with a rise or fall pattern plus ischemic symptoms, ECG changes, or imaging evidence indicates acute myocardial infarction and requires emergency management. Stable elevations occur in renal disease, heart failure, and myocarditis and need context-driven workup."
+    },
+    {
+      "id": "inr-warfarin",
+      "title": "Supratherapeutic INR on warfarin",
+      "section": "Anticoagulation",
+      "source": "CHEST anticoagulation guideline (paraphrase)",
+      "text": "For INR above the therapeutic range without bleeding, hold or reduce warfarin and recheck within days; INR above 10 without bleeding warrants oral vitamin K. Any major bleeding requires four-factor prothrombin complex concentrate plus intravenous vitamin K."
+    },
+    {
+      "id": "vitamin-d-deficiency",
+      "title": "Vitamin D deficiency repletion",
+      "section": "Endocrine",
+      "source": "Endocrine Society guideline (paraphrase)",
+      "text": "A 25-hydroxyvitamin D level below 20 ng/mL indicates deficiency. Replete with vitamin D3 (for example 50,000 IU weekly for 8 weeks or 6,000 IU daily), then maintain 1,500 to 2,000 IU daily and recheck the level after roughly three months."
+    },
+    {
+      "id": "hypoglycemia-review",
+      "title": "Responding to documented hypoglycemia",
+      "section": "Diabetes",
+      "source": "ADA Standards of Care (paraphrase)",
+      "text": "Glucose below 70 mg/dL in a treated diabetic patient should trigger review of insulin and sulfonylurea dosing, meal patterns, renal function, and hypoglycemia awareness. Recurrent or severe episodes justify relaxing glycemic targets and considering continuous glucose monitoring."
+    },
+    {
+      "id": "penicillin-allergy",
+      "title": "Documented penicillin allergy verification",
+      "section": "Allergy",
+      "source": "Drug allergy practice parameter (paraphrase)",
+      "text": "A reported penicillin allergy should be characterized by reaction type and timing; most patients with a remote or vague label tolerate penicillins. Document the specific reaction (for example rash versus anaphylaxis) and consider allergy referral for delabeling, since the label drives broader-spectrum antibiotic use."
+    },
+    {
+      "id": "smoking-cessation",
+      "title": "Tobacco use counseling and pharmacotherapy",
+      "section": "Prevention",
+      "source": "USPSTF tobacco recommendation (paraphrase)",
+      "text": "Ask every patient about tobacco use, advise cessation, and offer both behavioral support and pharmacotherapy — varenicline, bupropion, or nicotine replacement — which together roughly double quit rates. Document smoking status and pack-year history at intake."
+    },
+    {
+      "id": "medication-reconciliation",
+      "title": "Medication reconciliation at intake",
+      "section": "Patient safety",
+      "source": "Joint Commission NPSG (paraphrase)",
+      "text": "Reconcile the medication list the patient reports at intake against the chart at every transition of care: capture name, dose, route, frequency, and last dose taken, and explicitly resolve discrepancies. Unintentional discrepancies at admission are a leading source of preventable harm."
+    },
+    {
+      "id": "dyspnea-evaluation",
+      "title": "Initial evaluation of shortness of breath",
+      "section": "Symptoms",
+      "source": "Primary-care dyspnea review (paraphrase)",
+      "text": "New or worsening shortness of breath warrants assessment of onset, exertional pattern, and associated chest pain, plus vital signs with oxygen saturation. Red flags — rest hypoxia, unilateral leg swelling, hemoptysis, or ischemic features — should prompt urgent evaluation."
+    },
+    {
+      "id": "depression-screening",
+      "title": "Depression screening in adults",
+      "section": "Prevention",
+      "source": "USPSTF depression recommendation (paraphrase)",
+      "text": "Screen all adults for depression, including at intake, with a validated instrument such as the PHQ-2 followed by the PHQ-9 when positive, and ensure systems are in place for accurate diagnosis, treatment, and follow-up."
+    },
+    {
+      "id": "preventive-labs-diabetes",
+      "title": "Routine monitoring labs in diabetes",
+      "section": "Diabetes",
+      "source": "ADA Standards of Care (paraphrase)",
+      "text": "Adults with diabetes should have at least annual assessment of A1c (twice yearly if stable), a lipid panel, serum creatinine with eGFR, urine albumin-to-creatinine ratio, and liver enzymes, alongside blood pressure at every visit."
+    }
+  ]
+}

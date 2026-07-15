@@ -90,6 +90,35 @@ class LabReportExtraction(BaseModel):
     results: list[LabResult] = Field(default_factory=list)
 
 
+class IntakeField(BaseModel):
+    """One extracted intake-form field. ``value`` stays a string to preserve
+    exactly what the form said ("penicillin — rash", "1/2 ppd x 10 yrs")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field_name: str                      # e.g. "chief_complaint", "allergy"
+    value: str | None = None
+    section: str | None = None           # form section, e.g. "Allergies"
+    confidence: Confidence
+    citation: DocumentCitation
+    bbox: BoundingBox | None = None
+
+
+class IntakeFormExtraction(BaseModel):
+    """The validated result of extracting an ``intake_form`` (FR-2.2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str                     # source DocumentReference id
+    patient_id: str
+    form_date: str | None = None
+    fields: list[IntakeField] = Field(default_factory=list)
+
+
+# Either validated extraction shape — what stores and the graph consume.
+Extraction = LabReportExtraction | IntakeFormExtraction
+
+
 # --- Model-facing draft shapes (parse, don't validate) ---------------------
 # The vision model fills a draft: the facts plus *where* it found each one
 # (page + quote). It never supplies source_id — the ingestion tool stamps the
@@ -148,4 +177,53 @@ def finalize_lab_extraction(
         patient_id=patient_id,
         collection_date=draft.collection_date,
         results=results,
+    )
+
+
+class IntakeFieldDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field_name: str
+    value: str | None = None
+    section: str | None = None
+    confidence: Confidence
+    page: int | None = None              # where on the document it was read
+    quote: str | None = None             # verbatim snippet supporting the value
+    bbox: BoundingBox | None = None
+
+
+class IntakeExtractionDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    form_date: str | None = None
+    fields: list[IntakeFieldDraft] = Field(default_factory=list)
+
+
+def finalize_intake_extraction(
+    draft: IntakeExtractionDraft, *, document_id: str, patient_id: str
+) -> IntakeFormExtraction:
+    """Stamp lineage onto a model draft: every field's citation is anchored to
+    the real ``document_id`` (source_type=intake_form), which the model never sees."""
+    fields = [
+        IntakeField(
+            field_name=row.field_name,
+            value=row.value,
+            section=row.section,
+            confidence=row.confidence,
+            citation=DocumentCitation(
+                source_type=SourceType.INTAKE_FORM,
+                source_id=document_id,
+                page_or_section=row.section or (str(row.page) if row.page is not None else None),
+                field_or_chunk_id=row.field_name,
+                quote_or_value=row.quote,
+            ),
+            bbox=row.bbox,
+        )
+        for row in draft.fields
+    ]
+    return IntakeFormExtraction(
+        document_id=document_id,
+        patient_id=patient_id,
+        form_date=draft.form_date,
+        fields=fields,
     )

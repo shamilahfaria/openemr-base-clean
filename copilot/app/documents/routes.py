@@ -16,13 +16,13 @@ from pydantic import BaseModel
 from ..middleware import get_correlation_id
 from .extractor import ExtractionError, VisionExtractor
 from .ingest import DocumentStore, attach_and_extract
-from .schemas import LabResult
+from .schemas import IntakeField, LabReportExtraction, LabResult
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-SUPPORTED_DOC_TYPES = {"lab_pdf"}
+SUPPORTED_DOC_TYPES = {"lab_pdf", "intake_form"}
 
 
 class DocumentIngestResponse(BaseModel):
@@ -30,7 +30,8 @@ class DocumentIngestResponse(BaseModel):
     patient_id: str
     doc_type: str
     result_count: int
-    results: list[LabResult]
+    results: list[LabResult] = []        # lab_pdf extractions
+    fields: list[IntakeField] = []       # intake_form extractions
     correlation_id: str
 
 
@@ -75,6 +76,7 @@ async def ingest_document(
             filename=file.filename or "upload",
             media_type=media_type,
             data=data,
+            doc_type=doc_type,
             store=store,
             extractor=extractor,
         )
@@ -82,18 +84,22 @@ async def ingest_document(
         logger.warning("doc_ingest extraction failed correlation_id=%s", correlation_id)
         raise HTTPException(status_code=422, detail="could not extract the document")
 
+    is_lab = isinstance(extraction, LabReportExtraction)
+    facts = extraction.results if is_lab else extraction.fields
+
     latency_ms = (time.monotonic() - started) * 1000
     # PHI-free: counts and ids only, never extracted values or quotes.
     logger.info(
         "doc_ingest correlation_id=%s doc_type=%s document_id=%s results=%d latency_ms=%.1f",
-        correlation_id, doc_type, extraction.document_id, len(extraction.results), latency_ms,
+        correlation_id, doc_type, extraction.document_id, len(facts), latency_ms,
     )
 
     return DocumentIngestResponse(
         document_id=extraction.document_id,
         patient_id=extraction.patient_id,
         doc_type=doc_type,
-        result_count=len(extraction.results),
-        results=extraction.results,
+        result_count=len(facts),
+        results=extraction.results if is_lab else [],
+        fields=[] if is_lab else extraction.fields,
         correlation_id=correlation_id,
     )

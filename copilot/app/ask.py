@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from .documents.ingest import DocumentStore
 from .documents.routes import get_document_store
-from .documents.schemas import DocumentCitation, LabResult
+from .documents.schemas import DocumentCitation, IntakeField, LabResult
 from .graph.build import build_graph
 from .graph.state import AgentState, RoutingDecision
 from .middleware import get_correlation_id
@@ -33,8 +33,8 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     citations: list[DocumentCitation]
-    patient_facts: list[LabResult]
-    guideline_evidence: list[dict]      # populated by hybrid RAG (Early-sub)
+    patient_facts: list[LabResult | IntakeField]
+    guideline_evidence: list[dict]      # hybrid-RAG hits with scoring provenance
     degraded: bool
     routing: list[RoutingDecision]      # supervisor decisions — inspectable
     correlation_id: str

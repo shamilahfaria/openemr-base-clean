@@ -7,3 +7,5 @@ __pycache__/
 WEEK2_DEMO.md
 fixtures/sample_lab_report.pdf
 fixtures/make_sample_lab.py
+fixtures/sample_intake_form.pdf
+fixtures/make_sample_intake.py

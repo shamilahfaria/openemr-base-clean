@@ -55,10 +55,13 @@ def test_answer_is_grounded_and_cited(harness):
     assert body["degraded"] is False
     assert "A1c" in body["answer"]
     assert "normal" not in body["answer"].lower()
-    # Every citation resolves to the source document.
+    # Every fact citation resolves to the source document; guideline evidence
+    # (hybrid RAG) adds its own citations on top.
     assert body["citations"]
-    assert all(c["source_id"] == "docref-1" for c in body["citations"])
-    assert all(c["source_type"] == "lab_pdf" for c in body["citations"])
+    doc_citations = [c for c in body["citations"] if c["source_type"] == "lab_pdf"]
+    assert doc_citations
+    assert all(c["source_id"] == "docref-1" for c in doc_citations)
+    assert all(c["source_type"] in {"lab_pdf", "guideline"} for c in body["citations"])
     assert len(body["patient_facts"]) == 1
 
 

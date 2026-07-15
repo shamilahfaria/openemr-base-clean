@@ -44,7 +44,10 @@ async def test_answer_is_grounded_and_cited_via_graph():
     result = await graph.ainvoke(AgentState(patient_id="pat-1", question="what changed?"))
     assert result["degraded"] is False
     assert "A1c" in result["answer"]
-    assert [c.source_id for c in result["citations"]] == ["docref-1"]
+    doc_citations = [c for c in result["citations"] if c.source_type is SourceType.LAB_PDF]
+    assert [c.source_id for c in doc_citations] == ["docref-1"]
+    # The abnormal A1c also pulled cited guideline evidence (hybrid RAG).
+    assert any(c.source_type is SourceType.GUIDELINE for c in result["citations"])
     assert len(result["facts"]) == 1
 
 

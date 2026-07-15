@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ..documents.schemas import DocumentCitation, LabResult
+from ..documents.schemas import DocumentCitation, IntakeField, LabResult
 
 
 class RoutingDecision(BaseModel):
@@ -21,9 +21,9 @@ class AgentState(BaseModel):
     patient_id: str
     question: str
     # gathered material
-    facts: list[LabResult] = Field(default_factory=list)
+    facts: list[LabResult | IntakeField] = Field(default_factory=list)
     citations: list[DocumentCitation] = Field(default_factory=list)
-    evidence: list[dict] = Field(default_factory=list)      # guideline snippets (Early-sub)
+    evidence: list[dict] = Field(default_factory=list)      # hybrid-RAG guideline hits
     # outputs
     answer: str = ""
     degraded: bool = False

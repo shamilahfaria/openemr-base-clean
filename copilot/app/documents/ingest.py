@@ -16,8 +16,8 @@ import base64
 import hashlib
 from typing import Protocol
 
-from .extractor import VisionExtractor
-from .schemas import LabReportExtraction
+from .extractor import ExtractionError, VisionExtractor
+from .schemas import Extraction
 
 
 class StoredDocument:
@@ -36,11 +36,11 @@ class DocumentStore(Protocol):
         """Persist the source document; return its id. Idempotent by (patient, hash)."""
         ...
 
-    async def store_extraction(self, extraction: LabReportExtraction) -> None:
+    async def store_extraction(self, extraction: Extraction) -> None:
         """Persist derived facts, linked to the source document id."""
         ...
 
-    def get_patient_extractions(self, patient_id: str) -> list[LabReportExtraction]:
+    def get_patient_extractions(self, patient_id: str) -> list[Extraction]:
         """All extractions available for a patient (for grounding answers)."""
         ...
 
@@ -52,7 +52,7 @@ class InMemoryDocumentStore:
     def __init__(self) -> None:
         self._docs: dict[str, StoredDocument] = {}
         self._by_hash: dict[tuple[str, str], str] = {}
-        self._extractions: dict[str, LabReportExtraction] = {}
+        self._extractions: dict[str, Extraction] = {}
 
     async def store_document(
         self, *, patient_id: str, filename: str, media_type: str, data_b64: str, content_hash: str
@@ -71,10 +71,10 @@ class InMemoryDocumentStore:
         self._by_hash[key] = document_id
         return document_id
 
-    async def store_extraction(self, extraction: LabReportExtraction) -> None:
+    async def store_extraction(self, extraction: Extraction) -> None:
         self._extractions[extraction.document_id] = extraction
 
-    def get_patient_extractions(self, patient_id: str) -> list[LabReportExtraction]:
+    def get_patient_extractions(self, patient_id: str) -> list[Extraction]:
         return [e for e in self._extractions.values() if e.patient_id == patient_id]
 
 
@@ -84,9 +84,10 @@ async def attach_and_extract(
     filename: str,
     media_type: str,
     data: bytes,
+    doc_type: str = "lab_pdf",
     store: DocumentStore,
     extractor: VisionExtractor,
-) -> LabReportExtraction:
+) -> Extraction:
     content_hash = hashlib.sha256(data).hexdigest()
     data_b64 = base64.b64encode(data).decode("ascii")
 
@@ -97,7 +98,13 @@ async def attach_and_extract(
         data_b64=data_b64,
         content_hash=content_hash,
     )
-    extraction = await extractor.extract_lab(
+    if doc_type == "lab_pdf":
+        extract = extractor.extract_lab
+    elif doc_type == "intake_form":
+        extract = extractor.extract_intake
+    else:
+        raise ExtractionError(f"unsupported doc_type: {doc_type}")
+    extraction = await extract(
         document_id=document_id,
         patient_id=patient_id,
         media_type=media_type,
