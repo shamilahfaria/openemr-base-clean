@@ -8,7 +8,7 @@ runner.
 """
 from __future__ import annotations
 
-from app.documents.schemas import LabReportExtraction
+from app.documents.schemas import IntakeFormExtraction, LabReportExtraction
 
 CATEGORIES = (
     "schema_valid",
@@ -18,10 +18,12 @@ CATEGORIES = (
     "no_phi_in_logs",
 )
 
+_SCHEMAS = {"lab_pdf": LabReportExtraction, "intake_form": IntakeFormExtraction}
 
-def schema_valid(extraction: dict) -> bool:
+
+def schema_valid(extraction: dict, doc_type: str = "lab_pdf") -> bool:
     try:
-        LabReportExtraction.model_validate(extraction)
+        _SCHEMAS[doc_type].model_validate(extraction)
         return True
     except Exception:
         return False

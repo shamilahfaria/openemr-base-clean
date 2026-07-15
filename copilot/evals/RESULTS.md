@@ -1,6 +1,6 @@
 # Eval Results — Clinical Co-Pilot
 
-Dataset `2026.07.0` · rules `2026.07.0` · run 2026-07-13 14:26 UTC
+Dataset `2026.07.0` · rules `2026.07.0` · run 2026-07-15 13:32 UTC
 
 **16/16 passing.** Each case documents the failure mode it guards
 (boundaries, invariants, and regression risks — not a happy-path-only suite).

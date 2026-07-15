@@ -37,9 +37,11 @@ REGRESSION_TOLERANCE = 0.05
 
 
 def _stub_extractor(draft: dict) -> VisionExtractor:
+    """Answer whichever extraction tool the request forces with the fixture."""
     async def create(**kwargs):
+        tool_name = kwargs["tool_choice"]["name"]
         return SimpleNamespace(content=[
-            SimpleNamespace(type="tool_use", name="record_lab_results", input=draft)
+            SimpleNamespace(type="tool_use", name=tool_name, input=draft)
         ])
     return VisionExtractor(SimpleNamespace(messages=SimpleNamespace(create=create)))
 
@@ -59,11 +61,12 @@ def _run_case(client: TestClient, app, case: dict, fixtures: dict, capture: _Log
         fixtures[case["fixture"]]
     )
     capture.text = ""
+    doc_type = case.get("doc_type", "lab_pdf")
 
     ingest = client.post(
         "/documents",
         files={"file": ("doc.pdf", b"%PDF-1.4 eval", "application/pdf")},
-        data={"patient_id": case["patient_id"], "doc_type": "lab_pdf"},
+        data={"patient_id": case["patient_id"], "doc_type": doc_type},
         headers={"X-Clinician-Id": "eval-bot"},
     )
 
@@ -73,18 +76,18 @@ def _run_case(client: TestClient, app, case: dict, fixtures: dict, capture: _Log
         if ingest.status_code != 200:
             return False
         body = ingest.json()
+        facts = body["results"] if doc_type == "lab_pdf" else body["fields"]
         if category == "schema_valid":
-            return checkers.schema_valid(
-                {"document_id": body["document_id"], "patient_id": body["patient_id"],
-                 "results": body["results"]}
-            )
+            payload = {"document_id": body["document_id"], "patient_id": body["patient_id"]}
+            payload["results" if doc_type == "lab_pdf" else "fields"] = facts
+            return checkers.schema_valid(payload, doc_type)
         if category == "citation_present":
-            return checkers.citation_present(body["results"])
+            return checkers.citation_present(facts)
         if category == "no_phi_in_logs":
             return checkers.no_phi_in_logs(capture.text, phi_values=case.get("phi_values", []))
         return False
 
-    # kind == "ask": answerer must ground in the ingested facts (A+B) — red until built.
+    # kind == "ask": ingest, then the multi-agent graph answers over the facts.
     ask = client.post(
         "/ask",
         json={"patient_id": case["patient_id"], "question": case["question"]},
