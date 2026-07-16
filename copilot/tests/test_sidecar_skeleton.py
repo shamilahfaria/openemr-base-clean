@@ -198,3 +198,12 @@ class TestChatUi:
         text = client.get("/ui").text
         for field_id in ("token", "patient", "clinician"):
             assert f'id="{field_id}"' in text
+
+    def test_ui_pages_allow_framing_only_from_trusted_ancestors(self, client):
+        # Both panels are embedded in OpenEMR's chart as a modal iframe, so
+        # they carry a frame-ancestors CSP scoped to trusted origins.
+        for path in ("/ui", "/ui/documents"):
+            csp = client.get(path).headers["content-security-policy"]
+            assert csp.startswith("frame-ancestors ")
+            assert "'self'" in csp
+            assert "*" not in csp        # never the open web

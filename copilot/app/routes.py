@@ -1,12 +1,26 @@
 """HTTP routes for the sidecar skeleton."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Response, status
 from fastapi.responses import FileResponse, RedirectResponse
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+# The UI pages are embedded in OpenEMR's patient chart as a modal iframe, so
+# framing is allowed — but only from the OpenEMR origins we trust (plus local
+# dev), never the open web. Override per deployment via COPILOT_FRAME_ANCESTORS.
+_DEFAULT_FRAME_ANCESTORS = (
+    "'self' https://openemr-early-sub.up.railway.app "
+    "http://localhost:8300 https://localhost:9300"
+)
+
+
+def ui_security_headers() -> dict[str, str]:
+    ancestors = os.environ.get("COPILOT_FRAME_ANCESTORS", _DEFAULT_FRAME_ANCESTORS)
+    return {"Content-Security-Policy": f"frame-ancestors {ancestors}"}
 
 from .dependencies import (
     DependencyChecker,
@@ -28,13 +42,13 @@ async def root() -> RedirectResponse:
 @router.get("/ui")
 async def ui() -> FileResponse:
     """The chat panel (thin client for /chat)."""
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers=ui_security_headers())
 
 
 @router.get("/ui/documents")
 async def ui_documents() -> FileResponse:
     """The document workflow panel (thin client for /documents + /ask)."""
-    return FileResponse(STATIC_DIR / "documents.html")
+    return FileResponse(STATIC_DIR / "documents.html", headers=ui_security_headers())
 
 
 @router.get("/metrics")
