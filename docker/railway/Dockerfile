@@ -16,6 +16,23 @@ FROM openemr/openemr:latest@sha256:faf0b8386895ed7ab1891bb7c94012e50a91917113e3a
 # advertise 80 as the port Railway should send traffic to.
 EXPOSE 80
 
+# Clinical Co-Pilot in-chart launcher: two new self-contained library files
+# plus a one-line require injected into the stock patient-summary page. Only
+# NEW files are copied — overlaying the fork's whole demographics.php would be
+# unsafe because the fork has diverged from this release image. The sed keeps
+# the stock file otherwise byte-identical (</body> occurs exactly once); the
+# grep fails the build loudly if the anchor ever vanishes.
+# The php -l checks make a parse error fail the BUILD (the previous deploy
+# keeps serving) instead of fataling the live patient chart.
+COPY library/copilot.php library/copilot_launcher.php /var/www/localhost/htdocs/openemr/library/
+RUN cd /var/www/localhost/htdocs/openemr \
+    && sed -i 's#</body>#<?php require_once(__DIR__ . "/../../../library/copilot_launcher.php"); ?></body>#' \
+        interface/patient_file/summary/demographics.php \
+    && grep -q 'copilot_launcher' interface/patient_file/summary/demographics.php \
+    && php -l library/copilot.php \
+    && php -l library/copilot_launcher.php \
+    && php -l interface/patient_file/summary/demographics.php
+
 # Clear a stale leader lock before starting.
 #
 # openemr.sh elects a "leader" container by creating sites/docker-leader with a

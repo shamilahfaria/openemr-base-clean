@@ -14,7 +14,11 @@ sql
 contrib
 gacl
 interface
-library
+# library is excluded except the two self-contained Co-Pilot files the Railway
+# image COPYs in (docker/railway/Dockerfile).
+library/*
+!library/copilot.php
+!library/copilot_launcher.php
 src
 templates
 portal
