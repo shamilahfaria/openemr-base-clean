@@ -47,6 +47,10 @@
   .conn-note { grid-column:1 / -1; font-size:11px; color:var(--muted); }
 
   #log { flex:1; overflow-y:auto; padding:14px 2px; display:flex; flex-direction:column; gap:12px; }
+  /* Flex items shrink to fit by default, squashing every card and clipping its
+     text when the log overflows (worst in the short in-chart modal iframe).
+     Cards must keep their natural height; the log scrolls instead. */
+  #log > * { flex-shrink:0; }
 
   .turn-q { align-self:flex-end; max-width:80%; background:var(--navy); color:#fdfcf9;
             padding:9px 13px; border-radius:12px 12px 3px 12px; white-space:pre-wrap; }
