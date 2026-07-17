@@ -19,6 +19,9 @@ Langfuse tracing turns on when `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`
 request's correlation id. Without keys the other telemetry channels are
 unaffected. See [`OBSERVABILITY.md`](OBSERVABILITY.md).
 
+**Start here for a guided tour of the deployed system:
+[`WALKTHROUGH.md`](WALKTHROUGH.md).**
+
 See the design docs at the repo root: [`PRD.md`](../PRD.md),
 [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`USERS.md`](../USERS.md),
 [`AUDIT.md`](../AUDIT.md).
@@ -96,6 +99,7 @@ python -m evals.live --url https://copilot-early-sub.up.railway.app --token "$BE
 - **Agent:** https://copilot-early-sub.up.railway.app (`/ui`, `/health`, `/ready`, `/chat`)
 - **OpenEMR:** https://openemr-early-sub.up.railway.app
 
-Live and doing verified, source-cited turns end-to-end. Deploy with
-`cd copilot && railway up --service copilot` (builds `copilot/Dockerfile` via
-`copilot/railway.json`).
+Live and doing verified, source-cited turns end-to-end. Deploy **from the repo
+root** — the Railway service's Root Directory is `copilot`, so running from
+inside `copilot/` double-nests the path and the deploy fails:
+`railway up -e early-sub -s copilot --detach`.
