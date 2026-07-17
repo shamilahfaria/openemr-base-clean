@@ -161,6 +161,9 @@ const params = new URLSearchParams(location.search);
 for (const key of Object.keys(fields)) {
   const fromUrl = key !== "token" ? params.get(key) : null;
   fields[key].value = sanitize(fromUrl || localStorage.getItem("ccp." + key));
+  // Persist URL-provided values too (the in-chart modal passes them as params),
+  // so switching to /ui/documents and back keeps the connection.
+  if (fields[key].value) localStorage.setItem("ccp." + key, fields[key].value);
   fields[key].addEventListener("input", () => {
     const clean = sanitize(fields[key].value);
     if (clean !== fields[key].value) fields[key].value = clean;
@@ -179,7 +182,12 @@ function connected() {
 // demo admin user, and the button stays hidden otherwise.
 const gentoken = document.getElementById("gentoken");
 const genmsg = document.getElementById("genmsg");
-if (params.get("demo") === "1") document.getElementById("genrow").hidden = false;
+// Remember demo mode across in-app navigation: the modal link carries ?demo=1
+// once, but the button must survive a round-trip through /ui/documents.
+if (params.get("demo") === "1") localStorage.setItem("ccp.demo", "1");
+if (params.get("demo") === "1" || localStorage.getItem("ccp.demo") === "1") {
+  document.getElementById("genrow").hidden = false;
+}
 function setGenMsg(text, cls) { genmsg.textContent = text; genmsg.className = cls || ""; }
 gentoken.addEventListener("click", async () => {
   gentoken.disabled = true; setGenMsg("Requesting token…");

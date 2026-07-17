@@ -156,6 +156,9 @@ function sanitize(value) { return (value || "").replace(/[^\x20-\x7E]/g, ""); }
 const params = new URLSearchParams(location.search);
 for (const key of Object.keys(fields)) {
   fields[key].value = sanitize(params.get(key) || localStorage.getItem("ccp." + key));
+  // Persist URL-provided values too, so switching between the chat panel and
+  // this page keeps the connection either way.
+  if (fields[key].value) localStorage.setItem("ccp." + key, fields[key].value);
   fields[key].addEventListener("input", () => {
     localStorage.setItem("ccp." + key, sanitize(fields[key].value));
   });
