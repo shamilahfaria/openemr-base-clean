@@ -25,10 +25,13 @@ EXPOSE 80
 # The php -l checks make a parse error fail the BUILD (the previous deploy
 # keeps serving) instead of fataling the live patient chart.
 COPY library/copilot.php library/copilot_launcher.php /var/www/localhost/htdocs/openemr/library/
-# COPY preserves the source files' restrictive mode — unreadable to the apache
-# worker user, which turns the injected require into a fatal on the live chart.
+# COPY leaves the files root-owned. The base image's boot script chmods every
+# file to 400 but never chowns, and httpd workers run as `apache` — so anything
+# not apache-owned becomes unreadable at runtime (fatal on the live chart).
+# Match the stock files exactly: apache-owned, mode 400.
 RUN cd /var/www/localhost/htdocs/openemr \
-    && chmod 0644 library/copilot.php library/copilot_launcher.php \
+    && chown apache:root library/copilot.php library/copilot_launcher.php \
+    && chmod 400 library/copilot.php library/copilot_launcher.php \
     && sed -i 's#</body>#<?php require_once(__DIR__ . "/../../../library/copilot_launcher.php"); ?></body>#' \
         interface/patient_file/summary/demographics.php \
     && grep -q 'copilot_launcher' interface/patient_file/summary/demographics.php \
