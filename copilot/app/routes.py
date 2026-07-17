@@ -20,7 +20,13 @@ _DEFAULT_FRAME_ANCESTORS = (
 
 def ui_security_headers() -> dict[str, str]:
     ancestors = os.environ.get("COPILOT_FRAME_ANCESTORS", _DEFAULT_FRAME_ANCESTORS)
-    return {"Content-Security-Policy": f"frame-ancestors {ancestors}"}
+    return {
+        "Content-Security-Policy": f"frame-ancestors {ancestors}",
+        # Without this, browsers heuristically reuse cached UI pages after a
+        # deploy — users keep running stale HTML/CSS/JS inside the chart
+        # modal. no-cache forces revalidation (cheap 304 when unchanged).
+        "Cache-Control": "no-cache",
+    }
 
 from .dependencies import (
     DependencyChecker,
