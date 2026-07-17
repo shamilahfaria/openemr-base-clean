@@ -25,7 +25,10 @@ EXPOSE 80
 # The php -l checks make a parse error fail the BUILD (the previous deploy
 # keeps serving) instead of fataling the live patient chart.
 COPY library/copilot.php library/copilot_launcher.php /var/www/localhost/htdocs/openemr/library/
+# COPY preserves the source files' restrictive mode — unreadable to the apache
+# worker user, which turns the injected require into a fatal on the live chart.
 RUN cd /var/www/localhost/htdocs/openemr \
+    && chmod 0644 library/copilot.php library/copilot_launcher.php \
     && sed -i 's#</body>#<?php require_once(__DIR__ . "/../../../library/copilot_launcher.php"); ?></body>#' \
         interface/patient_file/summary/demographics.php \
     && grep -q 'copilot_launcher' interface/patient_file/summary/demographics.php \
