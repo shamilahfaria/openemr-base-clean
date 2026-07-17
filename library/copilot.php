@@ -91,6 +91,11 @@ function copilotLaunchUrl(?string $patientUuid = null, ?string $clinician = null
     if ($demoAdmin) {
         $query['demo'] = '1';
     }
+    // Cache-buster: Chrome partitions its HTTP cache by top-level site, so a
+    // stale copy of the Co-Pilot UI cached under the OpenEMR partition
+    // survives any refresh of the Co-Pilot's own origin. A per-pageload value
+    // guarantees the modal iframe always fetches the current UI.
+    $query['v'] = (string) time();
     $url = copilotBaseUrl() . '/ui';
     if ($query !== []) {
         $url .= '?' . http_build_query($query);
