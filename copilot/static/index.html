@@ -101,7 +101,7 @@
         <p class="tagline">Shift companion for the open chart — reads only, cites everything.</p>
       </div>
       <span style="font-size:12px; display:flex; gap:12px;">
-        <a href="/ui/documents">documents ↗</a>
+        <a href="/ui/documents" id="docslink">documents ↗</a>
         <a href="/dashboard" target="_blank">observability ↗</a>
       </span>
     </div>
@@ -140,6 +140,11 @@
 </div>
 
 <script>
+// Cache-bust the cross-panel link: Chrome partitions its HTTP cache by
+// top-level site, so inside the chart modal a bare /ui/documents can serve a
+// stale copy that no refresh of the copilot origin evicts.
+document.getElementById("docslink").href = "/ui/documents?v=" + Date.now();
+
 const sessionId = "ui-" + Math.random().toString(36).slice(2);
 const log = document.getElementById("log");
 const form = document.getElementById("ask");

@@ -103,7 +103,7 @@
         <p class="tagline">Upload a lab report or intake form, then ask grounded questions — every fact cited to its source.</p>
       </div>
       <nav>
-        <a href="/ui">chat panel ↗</a>
+        <a href="/ui" id="chatlink">chat panel ↗</a>
         <a href="/dashboard" target="_blank">observability ↗</a>
       </nav>
     </div>
@@ -143,6 +143,10 @@
 </div>
 
 <script>
+// Cache-bust the cross-panel link (see index.html — Chrome partitions its
+// HTTP cache by top-level site, so stale copies survive inside the modal).
+document.getElementById("chatlink").href = "/ui?v=" + Date.now();
+
 const log = document.getElementById("log");
 const form = document.getElementById("ask");
 const q = document.getElementById("q");
