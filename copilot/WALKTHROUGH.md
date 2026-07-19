@@ -23,8 +23,8 @@ synthetic (Synthea); no real PHI exists anywhere in the system.
 Log into OpenEMR → Finder → search **Legros** → open **Brendon298 Legros616**.
 A floating **Co-Pilot** button sits at the bottom-right of the patient
 dashboard. Clicking it opens the Co-Pilot as a modal over the chart with the
-active patient's FHIR uuid already wired in — no copy-pasting identifiers, no
-separate app to visit.
+active patient's FHIR (pronounced "fire") uuid already wired in — no
+copy-pasting identifiers, no separate app to visit.
 
 This is delivered as an OpenEMR-side module (`library/copilot.php` +
 `library/copilot_launcher.php`), injected into the stock patient-summary page
@@ -33,8 +33,10 @@ by the deployment image with build-time `php -l` guards, and framed under a
 
 ## 2. Grounded chat with deterministic verification
 
-In the modal, click **⚡ Generate demo token** (visible to the demo admin
-only), then ask: *"Code status and goals of care"*.
+In the modal, connect either way: **🔐 Sign in with OpenEMR** — a real OAuth2
+authorization-code + PKCE (pronounced "pixy") flow against OpenEMR's
+authorization server — or **⚡ Generate demo token** (one-click, visible to
+the demo admin only). Then ask: *"Code status and goals of care"*.
 
 What to notice in the answer card:
 
@@ -127,10 +129,15 @@ Design docs: [PRD](../PRD.md) · [ARCHITECTURE](../ARCHITECTURE.md) ·
 
 ## Honest limitations & next steps
 
-- **Auth**: the demo-token button is a demo-environment affordance (password
-  grant, server-side). The production path is OAuth **authorization-code +
-  PKCE**; longer term, a session-trusting PHP bridge inside OpenEMR would
-  remove per-user OAuth entirely for in-chart use.
+- **Auth**: **OAuth2 authorization-code + PKCE is shipped and verified** —
+  the 🔐 sign-in button runs the full browser flow (S256 challenge, popup to
+  OpenEMR's authorization server, origin-locked code relay, server-side token
+  exchange; OpenEMR requires confidential clients for `user/*` FHIR scopes, so
+  the client secret lives only in the sidecar). The demo-token button remains
+  as a grader convenience and is disabled outside demo environments. Next
+  tier: **SMART EHR-launch** — OpenEMR's standard for in-chart apps
+  (`skip_ehr_launch_authorization_flow`), which would carry patient context in
+  the launch and remove the per-session sign-in entirely.
 - **Durability**: sessions and the audit trail are in-memory (single
   instance). Production needs Redis-backed sessions and an append-only audit
   store with retention.
