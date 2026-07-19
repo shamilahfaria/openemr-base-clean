@@ -1,0 +1,32 @@
+meta {
+  name: 7 Ask - grounded, cited answer
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/ask
+  body: json
+}
+
+headers {
+  X-Clinician-Id: {{clinician}}
+}
+
+body:json {
+  {
+    "patient_id": "{{patient}}",
+    "question": "What changed in this patient's labs and what should I pay attention to?"
+  }
+}
+
+docs {
+  Run after ingesting documents for the same patient_id (requests 5-6).
+
+  -> 200 with the multi-agent answer: routing[] shows every supervisor
+  handoff (intake -> evidence -> answer) with logged reasons; citations[]
+  covers patient facts AND guideline evidence; patient_facts vs
+  guideline_evidence are separated; each guideline hit carries hybrid-RAG
+  provenance (keyword_rank from BM25, dense_rank from embedding cosine,
+  fused_score, rerank_score). degraded=false.
+}

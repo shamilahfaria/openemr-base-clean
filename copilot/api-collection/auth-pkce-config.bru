@@ -1,0 +1,20 @@
+meta {
+  name: 9 Auth - PKCE feature discovery
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/auth/config
+}
+
+docs {
+  OAuth2 authorization-code + PKCE sign-in (the non-demo auth path). This
+  endpoint is what the UI's "Sign in with OpenEMR" button reads.
+
+  -> 200 with enabled, the public client_id, OpenEMR's authorize_url, and the
+  requested scopes. Never contains a secret (the confidential client's secret
+  lives server-side only and joins the code->token exchange at
+  POST /auth/exchange). The browser flow itself needs a real login, so it is
+  exercised from the UI rather than this collection.
+}

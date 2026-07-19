@@ -1,0 +1,33 @@
+meta {
+  name: 5 Documents - ingest lab PDF
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/documents
+  body: multipartForm
+}
+
+headers {
+  X-Clinician-Id: {{clinician}}
+}
+
+body:multipart-form {
+  patient_id: {{patient}}
+  doc_type: lab_pdf
+  file: @file(../fixtures/sample_lab_report.pdf)
+}
+
+docs {
+  Week 2 multimodal ingestion. Attach ANY lab-report PDF or photo - Claude
+  vision reads the actual document; no fixture is required. (A synthetic
+  sample can be generated locally with fixtures/make_sample_lab.py.)
+
+  -> 200 with doc_type=lab_pdf, result_count, and results[]: each extracted
+  value carries test_name, unit, reference_range, abnormal_flag, confidence,
+  a verbatim-quote citation anchored to document_id, and a page bounding box
+  where the model located it. Strict schema: a hallucinated field fails
+  validation and never enters the record. Re-uploading the same file is
+  idempotent (same document_id).
+}

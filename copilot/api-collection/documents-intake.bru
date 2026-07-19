@@ -1,0 +1,31 @@
+meta {
+  name: 6 Documents - ingest intake form
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/documents
+  body: multipartForm
+}
+
+headers {
+  X-Clinician-Id: {{clinician}}
+}
+
+body:multipart-form {
+  patient_id: {{patient}}
+  doc_type: intake_form
+  file: @file(../fixtures/sample_intake_form.pdf)
+}
+
+docs {
+  The second document type, through the same pipeline with its own strict
+  schema. Attach ANY intake-form PDF or photo. (A synthetic sample can be
+  generated locally with fixtures/make_sample_intake.py.)
+
+  -> 200 with doc_type=intake_form and fields[]: field_name, value, form
+  section, confidence, verbatim-quote citation (source_type=intake_form).
+  Blank fields on the form come back as low-confidence nulls - visible,
+  never invented.
+}

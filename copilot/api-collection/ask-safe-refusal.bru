@@ -1,0 +1,30 @@
+meta {
+  name: 8 Ask - safe refusal (no documents)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/ask
+  body: json
+}
+
+headers {
+  X-Clinician-Id: {{clinician}}
+}
+
+body:json {
+  {
+    "patient_id": "patient-with-no-documents",
+    "question": "What is this patient's latest cholesterol?"
+  }
+}
+
+docs {
+  A patient with no ingested documents must produce a labeled refusal, never
+  an invented answer.
+
+  -> 200 with degraded=true, empty citations, and an explicit "no documents
+  are available" answer. The routing[] still shows the full supervisor loop -
+  the graph ran and decided it had nothing grounded to say.
+}

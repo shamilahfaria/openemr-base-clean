@@ -230,6 +230,17 @@ function addExtractionCard(body, latencyMs) {
       code.title = citationText(f.citation);
       cite.appendChild(code);
       if (f.citation.quote_or_value) cite.appendChild(document.createTextNode(" “" + f.citation.quote_or_value + "”"));
+      if (f.bbox) {
+        // Bounding box captured at extraction time (normalized page coords) —
+        // the lineage anchor for a click-to-source overlay.
+        const box = el("span", "pill high-conf",
+          "p." + f.bbox.page + " box " +
+          f.bbox.x0.toFixed(2) + "," + f.bbox.y0.toFixed(2) + "→" +
+          f.bbox.x1.toFixed(2) + "," + f.bbox.y1.toFixed(2));
+        box.title = "Where the model read this value on the page (normalized coordinates)";
+        box.style.marginLeft = "6px";
+        cite.appendChild(box);
+      }
       row.appendChild(cite);
       table.appendChild(row);
     });

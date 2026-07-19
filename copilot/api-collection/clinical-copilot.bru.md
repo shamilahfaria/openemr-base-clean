@@ -77,3 +77,58 @@ curl -i -X POST {{baseUrl}}/chat -H "Content-Type: application/json" \
 ## 8. Chat UI — `GET /ui`
 
 Open `{{baseUrl}}/ui` in a browser: paste token, patient id, clinician id, and chat.
+
+## 9. Week 2 — ingest a lab PDF → `POST /documents`
+
+Any lab-report PDF/photo works (Claude vision reads the real document):
+
+```bash
+curl -s -X POST {{baseUrl}}/documents -H "X-Clinician-Id: {{clinician}}" \
+  -F "file=@your_lab_report.pdf;type=application/pdf" \
+  -F "patient_id={{patient}}" -F "doc_type=lab_pdf"
+# 200: results[] with values, abnormal flags, confidence, verbatim-quote
+# citations anchored to document_id, and page bounding boxes
+```
+
+## 10. Week 2 — ingest an intake form → `POST /documents`
+
+```bash
+curl -s -X POST {{baseUrl}}/documents -H "X-Clinician-Id: {{clinician}}" \
+  -F "file=@your_intake_form.pdf;type=application/pdf" \
+  -F "patient_id={{patient}}" -F "doc_type=intake_form"
+# 200: fields[] with sections and citations; blank fields come back as
+# low-confidence nulls — visible, never invented
+```
+
+## 11. Week 2 — grounded, cited answer → `POST /ask`
+
+```bash
+curl -s -X POST {{baseUrl}}/ask -H "Content-Type: application/json" \
+  -H "X-Clinician-Id: {{clinician}}" \
+  -d '{"patient_id":"{{patient}}","question":"What changed in this patient'\''s labs?"}'
+# 200: routing[] (supervisor handoffs), citations[], patient_facts vs
+# guideline_evidence with hybrid-RAG provenance (keyword/dense/rerank scores)
+```
+
+Ask about a patient with no documents → `degraded: true`, a labeled refusal.
+
+## 12. Week 2 — readiness three-state walk → `GET /ready`
+
+```bash
+curl -s {{baseUrl}}/ready
+# components: document_store, vector_index (bm25 + dense, chunk count),
+# reranker — each named with ok|degraded|down; externals gate 503
+```
+
+## 13. Auth — PKCE discovery → `GET /auth/config`
+
+```bash
+curl -s {{baseUrl}}/auth/config
+# enabled + client_id + OpenEMR authorize_url; the browser flow runs from
+# the UI ("Sign in with OpenEMR") — secret never leaves the server
+```
+
+## 14. Documents UI — `GET /ui/documents`
+
+Open `{{baseUrl}}/ui/documents`: upload box + cited ask view with extraction
+tables, retrieval provenance, and the supervisor routing trace.
