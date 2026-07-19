@@ -104,8 +104,35 @@ def test_exchange_returns_access_token():
     assert captured["body"]["code"] == "auth-code-1"
     assert captured["body"]["code_verifier"] == "a" * 43
     assert captured["body"]["client_id"] == "public-client-123"
-    # ...and never sends a client secret (public client).
+    # ...and with no secret configured none is sent.
     assert "client_secret" not in captured["body"]
+
+
+def test_exchange_sends_secret_server_side_when_configured():
+    # OpenEMR only grants user/* FHIR scopes to confidential clients, so the
+    # secret is held by the sidecar and joins the exchange SERVER-SIDE only —
+    # the browser still runs plain PKCE and never sees it.
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = dict(httpx.QueryParams(request.content.decode()))
+        return httpx.Response(200, json={"access_token": "tok-2", "expires_in": 60})
+
+    env = {**BASE_ENV, "PKCE_CLIENT_SECRET": "server-side-secret"}
+    response = _client(env=env, transport=_token_transport(handler)).post(
+        "/auth/exchange",
+        json={"code": "c", "code_verifier": "a" * 43,
+              "redirect_uri": "https://copilot.example.test/auth/callback"},
+    )
+    assert response.status_code == 200
+    assert captured["body"]["client_secret"] == "server-side-secret"
+
+
+def test_config_stays_secretless_even_when_secret_configured():
+    env = {**BASE_ENV, "PKCE_CLIENT_SECRET": "server-side-secret"}
+    body = _client(env=env).get("/auth/config").json()
+    assert "server-side-secret" not in json.dumps(body)
+    assert "secret" not in json.dumps(body).lower()
 
 
 def test_exchange_upstream_rejection_is_502_without_body_leak():

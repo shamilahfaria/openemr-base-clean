@@ -40,6 +40,10 @@ class PkceConfig:
     authorize_url: str
     token_url: str
     scope: str
+    # OpenEMR grants user/* FHIR scopes only to confidential clients, so the
+    # sidecar holds the secret and adds it to the exchange server-side. The
+    # browser still runs plain PKCE and never sees it (/auth/config excludes it).
+    client_secret: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "PkceConfig":
@@ -51,6 +55,7 @@ class PkceConfig:
             authorize_url=source.get("PKCE_AUTHORIZE_URL") or f"{base}/oauth2/default/authorize",
             token_url=source.get("OPENEMR_OAUTH_TOKEN_URL") or f"{base}/oauth2/default/token",
             scope=source.get("PKCE_SCOPE", DEFAULT_SCOPE),
+            client_secret=source.get("PKCE_CLIENT_SECRET", ""),
         )
 
     @property
@@ -90,6 +95,9 @@ class TokenExchanger:
             "code_verifier": request.code_verifier,
             "redirect_uri": request.redirect_uri,
         }
+        if self.config.client_secret:
+            data["client_secret"] = self.config.client_secret
+
         try:
             async with httpx.AsyncClient(
                 transport=self._transport, timeout=self._timeout
