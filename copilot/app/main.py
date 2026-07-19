@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 
 from . import ask as ask_module
 from . import chat, wiring
+from .auth_pkce import router as auth_pkce_router
 from .demo_token import router as demo_token_router
 from .documents import routes as doc_routes
 from .metrics import get_registry
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(router)
     app.include_router(chat.router)
     app.include_router(demo_token_router)
+    app.include_router(auth_pkce_router)
     app.include_router(doc_routes.router)
     app.include_router(ask_module.router)
     # Bind the /chat provider seams to production wiring (tests re-override).

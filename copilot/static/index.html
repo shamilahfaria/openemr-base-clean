@@ -110,6 +110,10 @@
       <div class="conn-body">
         <div class="full"><label>OAuth2 bearer token (kept in this browser only)</label>
           <input id="token" type="password" placeholder="paste access token" autocomplete="off"></div>
+        <div class="full gen" id="pkcerow" hidden>
+          <button type="button" id="pkcesignin">🔐 Sign in with OpenEMR</button>
+          <span id="pkcemsg"></span>
+        </div>
         <div class="full gen" id="genrow" hidden>
           <button type="button" id="gentoken">⚡ Generate demo token</button>
           <span id="genmsg"></span>
@@ -217,6 +221,88 @@ gentoken.addEventListener("click", async () => {
     gentoken.disabled = false;
   }
 });
+// --- OAuth2 authorization-code + PKCE: the proper (non-demo) sign-in -------
+// The verifier/challenge/state live only in this page; OpenEMR's consent runs
+// in a popup (its login page refuses iframes); the code comes back through
+// /auth/callback -> postMessage; the token exchange happens server-side.
+const pkceBtn = document.getElementById("pkcesignin");
+const pkceMsg = document.getElementById("pkcemsg");
+let pkceConfig = null;
+let pkceFlow = null;   // {verifier, state} for the in-flight popup
+
+function setPkceMsg(text, cls) { pkceMsg.textContent = text; pkceMsg.className = cls || ""; }
+
+function b64url(bytes) {
+  return btoa(String.fromCharCode.apply(null, new Uint8Array(bytes)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+fetch("/auth/config").then(r => r.json()).then(cfg => {
+  if (cfg.enabled) { pkceConfig = cfg; document.getElementById("pkcerow").hidden = false; }
+}).catch(() => {});
+
+pkceBtn?.addEventListener("click", async () => {
+  if (!pkceConfig) return;
+  pkceBtn.disabled = true; setPkceMsg("Opening OpenEMR sign-in…");
+  try {
+    const raw = crypto.getRandomValues(new Uint8Array(48));
+    const verifier = b64url(raw.buffer);                       // 64 chars, RFC 7636-legal
+    const challenge = b64url(await crypto.subtle.digest(
+      "SHA-256", new TextEncoder().encode(verifier)));
+    const state = b64url(crypto.getRandomValues(new Uint8Array(16)).buffer);
+    pkceFlow = { verifier, state };
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: pkceConfig.client_id,
+      redirect_uri: location.origin + "/auth/callback",
+      scope: pkceConfig.scope,
+      state,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+    });
+    const popup = window.open(pkceConfig.authorize_url + "?" + params,
+      "copilot-oauth", "width=520,height=720");
+    if (!popup) { setPkceMsg("Popup blocked — allow popups for this site.", "bad"); }
+  } catch (err) {
+    setPkceMsg("Could not start sign-in.", "bad");
+  } finally {
+    pkceBtn.disabled = false;
+  }
+});
+
+window.addEventListener("message", async (event) => {
+  const data = event.data;
+  if (event.origin !== location.origin || !data || data.type !== "copilot-oauth-callback") return;
+  if (!pkceFlow || data.state !== pkceFlow.state) {
+    setPkceMsg("Sign-in state mismatch — try again.", "bad"); return;
+  }
+  if (data.error || !data.code) {
+    setPkceMsg("OpenEMR declined the sign-in" + (data.error ? " (" + data.error + ")" : "") + ".", "bad");
+    pkceFlow = null; return;
+  }
+  const flow = pkceFlow; pkceFlow = null;
+  setPkceMsg("Exchanging code for a token…");
+  try {
+    const response = await fetch("/auth/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: data.code,
+        code_verifier: flow.verifier,
+        redirect_uri: location.origin + "/auth/callback",
+      }),
+    });
+    if (!response.ok) { setPkceMsg("Token exchange failed (" + response.status + ").", "bad"); return; }
+    const body = await response.json();
+    fields.token.value = sanitize(body.access_token);
+    localStorage.setItem("ccp.token", fields.token.value);
+    refreshDot();
+    setPkceMsg("Signed in — connected.", "ok");
+  } catch (err) {
+    setPkceMsg("Network error during token exchange.", "bad");
+  }
+});
+
 function refreshDot() {
   document.getElementById("dot").className = "dot" + (connected() ? " on" : "");
   document.getElementById("connlabel").textContent = connected()
