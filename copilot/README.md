@@ -90,9 +90,11 @@ python -m evals.live --url https://copilot-early-sub.up.railway.app --token "$BE
 ## Artifacts
 
 - [`evals/`](evals/) — dataset + runner + [`RESULTS.md`](evals/RESULTS.md) (16/16)
-- [`loadtest/RESULTS.md`](loadtest/RESULTS.md) — 0% errors at 10 & 50 concurrent
+- [`loadtest/RESULTS.md`](loadtest/RESULTS.md) — infra baseline: 0% errors at 10 & 50 concurrent
+- [`loadtest/RESULTS-chat.md`](loadtest/RESULTS-chat.md) — real agent path: 100 live LLM
+  turns, 0% errors at 10 & 50 concurrent, p50 4.2s / p95 6.5s, 100/100 verified
 - [`api-collection/`](api-collection/) — runnable Bruno collection
-- [`COST_ANALYSIS.md`](COST_ANALYSIS.md) — dev spend + 100/1K/10K/100K projections
+- [`COST_ANALYSIS.md`](COST_ANALYSIS.md) — measured per-turn cost ($0.0125) + 100/1K/10K/100K projections
 
 ## Deployed (Railway, `early-sub` environment)
 

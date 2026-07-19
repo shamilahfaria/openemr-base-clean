@@ -25,6 +25,24 @@ list pricing ~**$3 / M input tokens**, ~**$15 / M output tokens**.
 Per-turn cost ≈ (3,700 × $3 + 650 × $15) / 1e6 ≈ **$0.021/turn**. Prompt caching
 of the static system+tool block (~700 tok) trims input ~15–20% at scale.
 
+### Measured (final-submission load test, 2026-07-18)
+
+100 real `/chat` turns against the live deployment (code-status question,
+single-tool profile; see `loadtest/RESULTS-chat.md`), read back from the
+service's own `/metrics` token/cost counters:
+
+| Metric | Measured | Projected above |
+|--------|----------|-----------------|
+| Input tokens / turn | 3,234 | ~3,700 |
+| Output tokens / turn | 185 | ~650 |
+| Cost / turn | **$0.0125** | $0.021 |
+| Verification pass rate | 100/100 | — |
+
+Measured lands ~40% under projection because a code-status turn resolves in
+**one** tool call with a terse answer; broader turns (meds + allergies + labs
+fan-out) trend toward the projected ~$0.021. The monthly projections below
+keep the conservative figure.
+
 ## Dev spend to date
 
 Development to Early Submission used Claude via **Claude Code** (not billed
