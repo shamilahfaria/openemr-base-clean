@@ -47,11 +47,13 @@ What to notice in the answer card:
 - Ask about a patient with no data (or a question the record can't answer)
   and the turn **degrades into a labeled fallback** instead of inventing.
 
-## 3. Multimodal ingestion: two document types, strict schemas
+## 3. Multimodal ingestion: three document types, strict schemas
 
 Click **documents ↗** in the panel header (patient and clinician carry over).
-Upload a lab report PDF with doc type *Lab report*, then an intake form with
-doc type *Intake form*.
+Upload a lab report PDF with doc type *Lab report*, an intake form with doc
+type *Intake form*, and (stretch) a referral letter/fax with doc type
+*Referral* — each flows through its own forced extraction tool and citation
+source type.
 
 What to notice in the extraction table:
 
@@ -71,8 +73,9 @@ Still in the documents panel, ask: *"What changed in this patient's labs?"*
 
 Expand the three disclosure sections under the answer:
 
-- **Citations** — patient facts cite `lab_pdf`/`intake_form` documents;
-  guideline evidence cites `guideline` chunks. Separated, never blended.
+- **Citations** — patient facts cite `lab_pdf`/`intake_form`/`referral`
+  documents; guideline evidence cites `guideline` chunks. Separated, never
+  blended.
 - **Guideline evidence — hybrid retrieval** — each hit shows its **keyword
   (BM25) rank, dense (embedding cosine) rank, and final rerank score**. The
   channels are fused with reciprocal-rank fusion and reranked by query-term
