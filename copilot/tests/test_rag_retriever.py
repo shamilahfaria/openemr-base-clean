@@ -111,5 +111,5 @@ def test_ask_returns_reranked_guideline_evidence_with_citations():
     guideline_citations = [c for c in body["citations"] if c["source_type"] == "guideline"]
     assert {c["source_id"] for c in guideline_citations} == {h["chunk_id"] for h in evidence}
 
-    # Routing shows the full supervisor loop: intake -> evidence -> answer.
-    assert [r["worker"] for r in body["routing"]] == ["intake", "evidence", "answer"]
+    # Routing shows the full supervisor loop, critic included.
+    assert [r["worker"] for r in body["routing"]] == ["intake", "evidence", "answer", "critic"]

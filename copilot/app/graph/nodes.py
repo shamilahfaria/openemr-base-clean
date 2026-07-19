@@ -1,12 +1,18 @@
-"""Graph nodes — supervisor + two workers + answerer.
+"""Graph nodes — supervisor + workers + answerer + critic.
 
 Each worker wraps existing, already-tested logic (the document store, the
 answer composer) as a graph node rather than reimplementing it. The supervisor
 makes an explicit, logged routing decision each turn; handoffs are never hidden.
+
+The critic (FR-4.4) is deterministic by design: the canonical answer is a pure
+function of the cited material in state, so the critic recomposes it and any
+drift — uncited claims, action-suggestion language — is rejected and repaired,
+never silently shipped.
 """
 from __future__ import annotations
 
 import logging
+import re
 
 from ..documents.ingest import DocumentStore
 from ..documents.schemas import (
@@ -44,8 +50,10 @@ def supervisor(state: AgentState) -> dict:
         worker, reason = "intake", "no patient facts gathered yet"
     elif not state.retrieved:
         worker, reason = "evidence", "have facts; check for guideline evidence"
-    else:
+    elif not state.answer:
         worker, reason = "answer", "enough grounded material to answer"
+    else:
+        worker, reason = "critic", "review the answer against its citations"
     logger.info("supervisor_route worker=%s reason=%s", worker, reason)
     return {"next": worker, "routing": [*state.routing, RoutingDecision(worker=worker, reason=reason)]}
 
@@ -103,27 +111,74 @@ def _evidence_citation(hit: dict) -> DocumentCitation:
     )
 
 
-def answerer(state: AgentState) -> dict:
-    """Compose the grounded, cited answer — or degrade rather than invent."""
-    if not state.facts:
-        return {
-            "answer": "No documents are available for this patient to answer that question.",
-            "citations": [],
-            "degraded": True,
-        }
-    answer = compose_answer(state.facts)
-    if state.evidence:
+_REFUSAL = "No documents are available for this patient to answer that question."
+
+
+def compose_canonical(
+    facts: list[LabResult | IntakeField], evidence: list[dict]
+) -> str:
+    """The canonical answer — a pure function of the cited material. The
+    answerer emits it; the critic recomputes it to verify nothing else
+    slipped in."""
+    if not facts:
+        return _REFUSAL
+    answer = compose_answer(facts)
+    if evidence:
         lines = ["", "Relevant guidance:"]
         lines += [
             f"- {hit['title']} ({hit['source']}) [guideline:{hit['chunk_id']}]"
-            for hit in state.evidence
+            for hit in evidence
         ]
         answer += "\n".join(lines)
+    return answer
+
+
+def answerer(state: AgentState) -> dict:
+    """Compose the grounded, cited answer — or degrade rather than invent."""
+    if not state.facts:
+        return {"answer": _REFUSAL, "citations": [], "degraded": True}
     return {
-        "answer": answer,
+        "answer": compose_canonical(state.facts, state.evidence),
         "citations": [
             *(fact.citation for fact in state.facts),
             *(_evidence_citation(hit) for hit in state.evidence),
         ],
         "degraded": False,
     }
+
+
+# Read-only co-pilot: it reports the record, it never directs care. Lines the
+# canonical composer did not produce are scanned for advice-shaped language so
+# the rejection reason is accurate in the flags.
+_UNSAFE_RE = re.compile(
+    r"\b(you should|recommend|administer|prescribe|start|increase|decrease|"
+    r"discontinue|titrate|hold|double|order)\b",
+    re.IGNORECASE,
+)
+
+
+def critic(state: AgentState) -> dict:
+    """Worker: reject uncited claims and unsafe advice (FR-4.4).
+
+    Recomposes the canonical answer from the cited material in state and
+    compares. Any line the citations cannot license is rejected — flagged as
+    unsafe advice or an uncited claim — and the answer is replaced with the
+    canonical, citation-only version. Deterministic: no model in the loop.
+    """
+    canonical = compose_canonical(state.facts, state.evidence)
+    flags: list[str] = []
+    if state.answer != canonical:
+        canonical_lines = set(canonical.split("\n"))
+        for line in state.answer.split("\n"):
+            if line in canonical_lines or not line.strip():
+                continue
+            if _UNSAFE_RE.search(line):
+                flags.append("unsafe action suggestion rejected (read-only co-pilot)")
+            else:
+                flags.append("uncited claim rejected (no supporting citation)")
+        if not flags:
+            # Canonical content is missing rather than extra — still repair.
+            flags.append("answer diverged from cited material; recomposed")
+    # PHI-free: counts only, never the rejected text.
+    logger.info("worker_critic flags=%d", len(flags))
+    return {"answer": canonical, "critic_flags": flags, "reviewed": True}

@@ -37,6 +37,7 @@ class AskResponse(BaseModel):
     guideline_evidence: list[dict]      # hybrid-RAG hits with scoring provenance
     degraded: bool
     routing: list[RoutingDecision]      # supervisor decisions — inspectable
+    critic_flags: list[str]             # critic rejections (empty = clean pass)
     correlation_id: str
 
 
@@ -76,5 +77,6 @@ async def ask(
         guideline_evidence=result["evidence"],
         degraded=result["degraded"],
         routing=result["routing"],
+        critic_flags=result["critic_flags"],
         correlation_id=correlation_id,
     )

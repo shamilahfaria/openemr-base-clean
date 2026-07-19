@@ -78,8 +78,15 @@ Expand the three disclosure sections under the answer:
   channels are fused with reciprocal-rank fusion and reranked by query-term
   coverage; retrieval is deterministic and inspectable end to end.
 - **Supervisor routing** — the LangGraph supervisor's actual decisions:
-  `intake → evidence → answer`, each with its logged reason. Handoffs are
-  data, not vibes.
+  `intake → evidence → answer → critic`, each with its logged reason.
+  Handoffs are data, not vibes.
+- **Critic worker** (stretch, FR-4.4) — a fourth, deterministic worker
+  reviews every answer before it leaves the graph: it recomposes the answer
+  purely from the cited material and rejects anything the citations cannot
+  license — uncited claims and action-suggestion language (the co-pilot is
+  read-only; it reports the record, it never directs care). Rejections
+  surface as `critic_flags` in the response and an amber "Critic" banner in
+  the UI; a clean pass is an empty list.
 
 ## 5. The eval-driven CI hard gate
 

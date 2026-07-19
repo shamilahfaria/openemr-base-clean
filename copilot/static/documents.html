@@ -70,6 +70,9 @@
   .pill.critical { background:var(--bad-bg); color:var(--bad); }
   .pill.lowconf { background:var(--bad-bg); color:var(--bad); }
 
+  .flag { margin:0 12px 10px; padding:7px 10px; font-size:12px; background:var(--amber-bg);
+          border:1px solid var(--amber); border-radius:6px; color:var(--ink); }
+  .flag b { color:var(--amber); }
   .sources { border-top:1px dashed var(--line); margin:0 12px; padding:8px 0 10px; }
   .sources summary { cursor:pointer; font-size:11px; color:var(--muted);
                      text-transform:uppercase; letter-spacing:.06em; }
@@ -297,6 +300,13 @@ function addAnswerCard(body, latencyMs) {
   card.appendChild(status);
 
   card.appendChild(el("div", "card-body", body.answer || "(no answer)"));
+
+  (body.critic_flags || []).forEach(flag => {
+    const div = el("div", "flag");
+    div.appendChild(el("b", null, "Critic: "));
+    div.appendChild(document.createTextNode(flag));
+    card.appendChild(div);
+  });
 
   if ((body.citations || []).length) {
     const details = document.createElement("details");

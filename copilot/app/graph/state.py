@@ -30,5 +30,7 @@ class AgentState(BaseModel):
     # control / audit
     extracted: bool = False
     retrieved: bool = False
+    reviewed: bool = False                                  # critic has run
+    critic_flags: list[str] = Field(default_factory=list)   # rejections (PHI-free)
     routing: list[RoutingDecision] = Field(default_factory=list)
     next: str = ""

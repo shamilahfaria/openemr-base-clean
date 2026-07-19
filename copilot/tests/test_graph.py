@@ -33,7 +33,7 @@ def _store_with_a1c() -> InMemoryDocumentStore:
 async def test_supervisor_routes_intake_then_evidence_then_answer():
     graph = build_graph(_store_with_a1c())
     result = await graph.ainvoke(AgentState(patient_id="pat-1", question="what changed?"))
-    assert [d.worker for d in result["routing"]] == ["intake", "evidence", "answer"]
+    assert [d.worker for d in result["routing"]] == ["intake", "evidence", "answer", "critic"]
     # Every decision is explainable — never a black box.
     assert all(d.reason for d in result["routing"])
 
@@ -58,4 +58,4 @@ async def test_missing_data_degrades_via_graph():
     assert result["degraded"] is True
     assert result["citations"] == []
     # It still routed through the workers before deciding it had nothing to say.
-    assert [d.worker for d in result["routing"]] == ["intake", "evidence", "answer"]
+    assert [d.worker for d in result["routing"]] == ["intake", "evidence", "answer", "critic"]
