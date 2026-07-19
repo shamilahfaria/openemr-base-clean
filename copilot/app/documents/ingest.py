@@ -106,6 +106,8 @@ async def attach_and_extract(
         extract = extractor.extract_lab
     elif doc_type == "intake_form":
         extract = extractor.extract_intake
+    elif doc_type == "referral":
+        extract = extractor.extract_referral
     else:
         raise ExtractionError(f"unsupported doc_type: {doc_type}")
     extraction = await extract(

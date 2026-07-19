@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class SourceType(str, Enum):
     LAB_PDF = "lab_pdf"
     INTAKE_FORM = "intake_form"
+    REFERRAL = "referral"
     FHIR = "fhir"
     GUIDELINE = "guideline"
 
@@ -115,8 +116,21 @@ class IntakeFormExtraction(BaseModel):
     fields: list[IntakeField] = Field(default_factory=list)
 
 
-# Either validated extraction shape — what stores and the graph consume.
-Extraction = LabReportExtraction | IntakeFormExtraction
+class ReferralExtraction(BaseModel):
+    """The validated result of extracting a ``referral`` fax/letter. Shares the
+    sectioned-field shape with intake forms (referrals are form-like), with its
+    own source type so citations name the true document class."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str                     # source DocumentReference id
+    patient_id: str
+    referral_date: str | None = None
+    fields: list[IntakeField] = Field(default_factory=list)
+
+
+# Any validated extraction shape — what stores and the graph consume.
+Extraction = LabReportExtraction | IntakeFormExtraction | ReferralExtraction
 
 
 # --- Model-facing draft shapes (parse, don't validate) ---------------------
@@ -199,19 +213,19 @@ class IntakeExtractionDraft(BaseModel):
     fields: list[IntakeFieldDraft] = Field(default_factory=list)
 
 
-def finalize_intake_extraction(
-    draft: IntakeExtractionDraft, *, document_id: str, patient_id: str
-) -> IntakeFormExtraction:
-    """Stamp lineage onto a model draft: every field's citation is anchored to
-    the real ``document_id`` (source_type=intake_form), which the model never sees."""
-    fields = [
+def _finalize_fields(
+    rows: list[IntakeFieldDraft], *, source_type: SourceType, document_id: str
+) -> list[IntakeField]:
+    """Stamp lineage onto sectioned-field drafts: every field's citation is
+    anchored to the real ``document_id``, which the model never sees."""
+    return [
         IntakeField(
             field_name=row.field_name,
             value=row.value,
             section=row.section,
             confidence=row.confidence,
             citation=DocumentCitation(
-                source_type=SourceType.INTAKE_FORM,
+                source_type=source_type,
                 source_id=document_id,
                 page_or_section=row.section or (str(row.page) if row.page is not None else None),
                 field_or_chunk_id=row.field_name,
@@ -219,11 +233,38 @@ def finalize_intake_extraction(
             ),
             bbox=row.bbox,
         )
-        for row in draft.fields
+        for row in rows
     ]
+
+
+def finalize_intake_extraction(
+    draft: IntakeExtractionDraft, *, document_id: str, patient_id: str
+) -> IntakeFormExtraction:
     return IntakeFormExtraction(
         document_id=document_id,
         patient_id=patient_id,
         form_date=draft.form_date,
-        fields=fields,
+        fields=_finalize_fields(
+            draft.fields, source_type=SourceType.INTAKE_FORM, document_id=document_id
+        ),
+    )
+
+
+class ReferralExtractionDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    referral_date: str | None = None
+    fields: list[IntakeFieldDraft] = Field(default_factory=list)
+
+
+def finalize_referral_extraction(
+    draft: ReferralExtractionDraft, *, document_id: str, patient_id: str
+) -> ReferralExtraction:
+    return ReferralExtraction(
+        document_id=document_id,
+        patient_id=patient_id,
+        referral_date=draft.referral_date,
+        fields=_finalize_fields(
+            draft.fields, source_type=SourceType.REFERRAL, document_id=document_id
+        ),
     )

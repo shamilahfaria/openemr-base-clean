@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-SUPPORTED_DOC_TYPES = {"lab_pdf", "intake_form"}
+SUPPORTED_DOC_TYPES = {"lab_pdf", "intake_form", "referral"}
 
 
 class DocumentIngestResponse(BaseModel):

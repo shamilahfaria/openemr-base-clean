@@ -9,3 +9,5 @@ fixtures/sample_lab_report.pdf
 fixtures/make_sample_lab.py
 fixtures/sample_intake_form.pdf
 fixtures/make_sample_intake.py
+fixtures/sample_referral.pdf
+fixtures/make_sample_referral.py

@@ -16,8 +16,11 @@ from .schemas import (
     IntakeFormExtraction,
     LabExtractionDraft,
     LabReportExtraction,
+    ReferralExtraction,
+    ReferralExtractionDraft,
     finalize_intake_extraction,
     finalize_lab_extraction,
+    finalize_referral_extraction,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +34,20 @@ _LAB_SYSTEM = (
     "field you cannot read confidently, set confidence to \"low\" and leave the "
     "value null. For each result include the page number and a short verbatim "
     "quote of the text the value came from."
+)
+
+_REFERRAL_TOOL = "record_referral_fields"
+
+_REFERRAL_SYSTEM = (
+    "You are a clinical document extractor. Read the attached referral "
+    "letter/fax and record every completed field you can see using the "
+    "record_referral_fields tool (referring provider and organization, reason "
+    "for referral, relevant diagnoses, requested service, current medications "
+    "mentioned, and so on). Extract only what is written on the document — "
+    "never infer or invent a value; leave blank fields out or set confidence "
+    "to \"low\" with a null value when unreadable. For each field include the "
+    "document section, the page number, and a short verbatim quote of the "
+    "text the value came from."
 )
 
 _INTAKE_TOOL = "record_intake_fields"
@@ -135,6 +152,29 @@ class VisionExtractor:
         # Validate at the boundary; then stamp lineage the model never controls.
         draft = LabExtractionDraft.model_validate(tool_input)
         return finalize_lab_extraction(
+            draft, document_id=document_id, patient_id=patient_id
+        )
+
+    async def extract_referral(
+        self,
+        *,
+        document_id: str,
+        patient_id: str,
+        media_type: str,
+        data_b64: str,
+    ) -> ReferralExtraction:
+        tool_input = await self._extract(
+            tool_name=_REFERRAL_TOOL,
+            tool_description="Record the referral fields read from the document.",
+            draft_schema=ReferralExtractionDraft.model_json_schema(),
+            system=_REFERRAL_SYSTEM,
+            instruction="Extract the referral fields.",
+            media_type=media_type,
+            data_b64=data_b64,
+        )
+        # Validate at the boundary; then stamp lineage the model never controls.
+        draft = ReferralExtractionDraft.model_validate(tool_input)
+        return finalize_referral_extraction(
             draft, document_id=document_id, patient_id=patient_id
         )
 
