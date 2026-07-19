@@ -1,13 +1,17 @@
 """Readiness dependency checking.
 
-``/ready`` must validate that meaningful dependencies are reachable (OpenEMR API,
-Anthropic, Langfuse). The check is expressed behind ``DependencyChecker`` so the
-real implementation does network I/O while tests inject a fake.
+``/ready`` walks three states. External dependencies (OpenEMR API, Anthropic,
+Langfuse) gate traffic: any unreachable -> ``not_ready`` (503). The in-process
+pipeline components — document storage, vector index, reranker — are surfaced
+by NAME with their shape; an impaired component -> ``degraded`` (200, still
+serving) rather than taking the service out of rotation. Both probes sit
+behind providers so the real implementations do I/O / introspection while
+tests inject fakes.
 """
 from __future__ import annotations
 
 import os
-from typing import Protocol
+from typing import Callable, Protocol
 
 import httpx
 from pydantic import BaseModel
@@ -25,9 +29,18 @@ class DependencyChecker(Protocol):
     async def check_langfuse(self) -> bool: ...
 
 
+class ComponentReport(BaseModel):
+    """One in-process pipeline component, surfaced by name — never a black box."""
+
+    name: str
+    state: str                          # "ok" | "degraded" | "down"
+    detail: dict[str, int] = {}
+
+
 class ReadinessReport(BaseModel):
-    status: str                 # "ready" | "not_ready"
-    checks: dict[str, str]      # dependency name -> "ok" | "unreachable"
+    status: str                 # "ready" | "degraded" | "not_ready"
+    checks: dict[str, str]      # external dependency -> "ok" | "unreachable"
+    components: dict[str, ComponentReport] = {}
 
 
 class HttpDependencyChecker:
@@ -67,10 +80,57 @@ def get_dependency_checker() -> DependencyChecker:
     return HttpDependencyChecker()
 
 
-async def evaluate_readiness(checker: DependencyChecker) -> ReadinessReport:
-    """Run every check (a raised exception counts as ``unreachable``) and aggregate.
+def inspect_components() -> dict[str, ComponentReport]:
+    """Introspect the live Week-2 pipeline: store, vector index, reranker.
 
-    ``status`` is ``ready`` only when every dependency reports reachable.
+    Imports are local so readiness introspection can never break app startup;
+    a component that fails inspection reports ``down`` rather than raising.
+    """
+    components: dict[str, ComponentReport] = {}
+
+    try:
+        from . import wiring
+
+        store = wiring.get_document_store()
+        components["document_store"] = ComponentReport(
+            name=type(store).__name__, state="ok", detail=store.stats()
+        )
+    except Exception:
+        components["document_store"] = ComponentReport(name="document_store", state="down")
+
+    try:
+        from .rag.retriever import default_retriever
+
+        retriever = default_retriever()
+        stats = retriever.stats()
+        components["vector_index"] = ComponentReport(
+            name=retriever.index_name,
+            state="ok" if stats.get("chunks", 0) > 0 else "degraded",
+            detail=stats,
+        )
+        components["reranker"] = ComponentReport(name=retriever.reranker_name, state="ok")
+    except Exception:
+        components["vector_index"] = ComponentReport(name="vector_index", state="down")
+        components["reranker"] = ComponentReport(name="reranker", state="down")
+
+    return components
+
+
+def get_component_inspector() -> Callable[[], dict[str, ComponentReport]]:
+    """FastAPI provider for the component walk. Overridden in tests."""
+    return inspect_components
+
+
+async def evaluate_readiness(
+    checker: DependencyChecker,
+    inspector: Callable[[], dict[str, ComponentReport]] = inspect_components,
+) -> ReadinessReport:
+    """Aggregate the three-state walk.
+
+    ``not_ready``  — an external dependency is unreachable (gates traffic).
+    ``degraded``   — externals fine, but a pipeline component is impaired
+                     (or inspection itself failed); still serving.
+    ``ready``      — everything ok.
     """
     named_checks = {
         "openemr": checker.check_openemr,
@@ -86,5 +146,16 @@ async def evaluate_readiness(checker: DependencyChecker) -> ReadinessReport:
             reachable = False
         checks[name] = "ok" if reachable else "unreachable"
 
-    all_ok = all(state == "ok" for state in checks.values())
-    return ReadinessReport(status="ready" if all_ok else "not_ready", checks=checks)
+    try:
+        components = inspector()
+        components_ok = all(c.state == "ok" for c in components.values())
+    except Exception:
+        components, components_ok = {}, False
+
+    if any(state != "ok" for state in checks.values()):
+        status = "not_ready"
+    elif not components_ok:
+        status = "degraded"
+    else:
+        status = "ready"
+    return ReadinessReport(status=status, checks=checks, components=components)

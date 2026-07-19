@@ -77,6 +77,10 @@ class InMemoryDocumentStore:
     def get_patient_extractions(self, patient_id: str) -> list[Extraction]:
         return [e for e in self._extractions.values() if e.patient_id == patient_id]
 
+    def stats(self) -> dict[str, int]:
+        """PHI-free counts for the readiness component walk."""
+        return {"documents": len(self._docs), "extractions": len(self._extractions)}
+
 
 async def attach_and_extract(
     *,

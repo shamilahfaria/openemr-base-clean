@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Callable
 
 from fastapi import APIRouter, Depends, Response, status
 from fastapi.responses import FileResponse, RedirectResponse
@@ -29,9 +30,11 @@ def ui_security_headers() -> dict[str, str]:
     }
 
 from .dependencies import (
+    ComponentReport,
     DependencyChecker,
     ReadinessReport,
     evaluate_readiness,
+    get_component_inspector,
     get_dependency_checker,
 )
 from .metrics import get_registry
@@ -79,9 +82,16 @@ async def health() -> dict[str, str]:
 async def ready(
     response: Response,
     checker: DependencyChecker = Depends(get_dependency_checker),
+    inspector: Callable[[], dict[str, ComponentReport]] = Depends(get_component_inspector),
 ) -> ReadinessReport:
-    """Readiness: 200 iff every dependency is reachable, otherwise 503."""
-    report = await evaluate_readiness(checker)
-    if report.status != "ready":
+    """Readiness three-state walk.
+
+    ``ready`` (200) — everything ok. ``degraded`` (200) — externals fine but a
+    named pipeline component (document store, vector index, reranker) is
+    impaired; still serving. ``not_ready`` (503) — an external dependency is
+    unreachable; out of rotation.
+    """
+    report = await evaluate_readiness(checker, inspector)
+    if report.status == "not_ready":
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return report

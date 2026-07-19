@@ -72,10 +72,9 @@ class TestReadinessEndpoint:
     def test_ready_body_reports_every_dependency_ok(self, make_ready_client):
         response = make_ready_client().get("/ready")
         assert response.status_code == 200
-        assert response.json() == {
-            "status": "ready",
-            "checks": {"openemr": "ok", "anthropic": "ok", "langfuse": "ok"},
-        }
+        body = response.json()
+        assert body["status"] == "ready"
+        assert body["checks"] == {"openemr": "ok", "anthropic": "ok", "langfuse": "ok"}
 
     def test_ready_returns_503_when_openemr_unreachable(self, make_ready_client):
         response = make_ready_client(openemr=False).get("/ready")
@@ -133,6 +132,79 @@ class TestReadinessEndpoint:
         ).get("/ready")
         assert response.status_code == 503
         assert all(v == "unreachable" for v in response.json()["checks"].values())
+
+
+class TestReadinessComponents:
+    """GET /ready — three-state walk with the Week-2 pipeline components named.
+
+    External dependencies gate traffic (any down -> not_ready, 503). The
+    in-process pipeline components — document storage, vector index, reranker —
+    are surfaced by NAME; an impaired component degrades readiness (200,
+    status=degraded) without taking the service out of rotation.
+    """
+
+    def test_ready_surfaces_named_pipeline_components(self, make_ready_client):
+        body = make_ready_client().get("/ready").json()
+        components = body["components"]
+        assert set(components) == {"document_store", "vector_index", "reranker"}
+        assert components["document_store"]["name"] == "InMemoryDocumentStore"
+        assert "bm25" in components["vector_index"]["name"]
+        assert "dense" in components["vector_index"]["name"]
+        assert "coverage" in components["reranker"]["name"]
+
+    def test_all_components_ok_when_pipeline_is_intact(self, make_ready_client):
+        components = make_ready_client().get("/ready").json()["components"]
+        assert all(c["state"] == "ok" for c in components.values())
+
+    def test_vector_index_reports_corpus_size(self, make_ready_client):
+        vector_index = make_ready_client().get("/ready").json()["components"]["vector_index"]
+        assert vector_index["detail"]["chunks"] == 26
+        assert vector_index["detail"]["embedding_dim"] == 256
+
+    def test_document_store_reports_document_counts(self, make_ready_client):
+        store = make_ready_client().get("/ready").json()["components"]["document_store"]
+        assert store["detail"] == {"documents": 0, "extractions": 0}
+
+    def test_degraded_component_yields_degraded_but_200(self, app, make_ready_client):
+        # The middle state of the walk: externals fine, an internal component
+        # impaired -> 200 (still serving) with status=degraded, never a 503.
+        from app.dependencies import ComponentReport, get_component_inspector
+
+        def impaired() -> dict[str, ComponentReport]:
+            return {
+                "document_store": ComponentReport(name="InMemoryDocumentStore", state="ok"),
+                "vector_index": ComponentReport(name="hybrid bm25 + dense", state="degraded"),
+                "reranker": ComponentReport(name="query-term-coverage", state="ok"),
+            }
+
+        app.dependency_overrides[get_component_inspector] = lambda: impaired
+        response = make_ready_client().get("/ready")
+        assert response.status_code == 200
+        assert response.json()["status"] == "degraded"
+
+    def test_external_down_wins_over_component_degradation(self, app, make_ready_client):
+        # not_ready (503) outranks degraded: a hard dependency outage takes the
+        # service out of rotation regardless of internal component state.
+        from app.dependencies import ComponentReport, get_component_inspector
+
+        def impaired() -> dict[str, ComponentReport]:
+            return {"vector_index": ComponentReport(name="hybrid", state="down")}
+
+        app.dependency_overrides[get_component_inspector] = lambda: impaired
+        response = make_ready_client(openemr=False).get("/ready")
+        assert response.status_code == 503
+        assert response.json()["status"] == "not_ready"
+
+    def test_component_inspection_failure_degrades_not_500(self, app, make_ready_client):
+        from app.dependencies import get_component_inspector
+
+        def exploding():
+            raise RuntimeError("introspection failed")
+
+        app.dependency_overrides[get_component_inspector] = lambda: exploding
+        response = make_ready_client().get("/ready")
+        assert response.status_code == 200
+        assert response.json()["status"] == "degraded"
 
 
 class TestCorrelationIdMiddleware:

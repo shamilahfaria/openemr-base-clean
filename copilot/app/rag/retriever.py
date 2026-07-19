@@ -79,6 +79,11 @@ class _Corpus(BaseModel):
 
 
 class HybridRetriever:
+    # Surfaced by /ready's component walk so operators see exactly which
+    # retrieval stack is live, not a black box.
+    index_name = "hybrid: bm25 keyword + hashed-tfidf dense (cosine), rrf-fused"
+    reranker_name = "query-term-coverage reranker"
+
     def __init__(self, chunks: list[_Chunk]):
         self._chunks = chunks
         # Index text = title + section + body, so entity mentions anywhere count.
@@ -89,6 +94,10 @@ class HybridRetriever:
                 self._doc_freq[term] = self._doc_freq.get(term, 0) + 1
         self._avg_len = sum(len(d) for d in self._docs) / len(self._docs)
         self._embeddings = [self._embed(tokens) for tokens in self._docs]
+
+    def stats(self) -> dict[str, int]:
+        """Index shape for the readiness component walk."""
+        return {"chunks": len(self._chunks), "embedding_dim": _EMBED_DIM}
 
     # --- dense channel ------------------------------------------------------
 
